@@ -1,4 +1,4 @@
-# Polymarket Live Volume Visualizer
+# Polymarket Live Visualizer
 
 A treemap-based, real-time visualizer for Polymarket prediction markets that highlights where interest and money are flowing in real-time.
 
