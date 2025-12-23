@@ -1,40 +1,39 @@
-# Polymarket Signal Visualizer MVP
+# Polymarket Live Volume Visualizer
 
-A signal-driven visualizer for Polymarket that surfaces abnormal market movements.
+A treemap-based, real-time visualizer for Polymarket prediction markets that highlights where interest and money are flowing in real-time.
 
 ## Features
-- **Signal Feed**: Ranked list of markets with significant probability shifts.
-- **Explainability**: Text-based explanations for why a market is flagged.
-- **Deep Dive**: Modal view showing historical probability snapshots and volume context.
-- **Abnormal Movement Detection**: Rule-based engine calculating movement scores (Z-score inspired delta).
+- **Volume-Weighted Treemap**: Market box size corresponds to total trading volume.
+- **Probability Heatmap**: Tiles are colored on a Red (NO) to Blue (YES) gradient based on outcome probability.
+- **Real-Time Polling**: Automatically refreshes data from the Polymarket API every 15 seconds.
+- **Dynamic Filters**: Volume threshold slider to filter out noise and focus on high-impact markets.
+- **API Proxy**: Built-in Next.js proxy route to handle CORS and normalize data.
 
 ## Tech Stack
-- **Backend**: FastAPI (Python), SQLite, SQLAlchemy, Pandas.
-- **Frontend**: Next.js (TypeScript), TailwindCSS, Glassmorphism UI.
+- **Framework**: [Next.js](https://nextjs.org/) (App Router, TypeScript)
+- **Visualization**: [D3.js](https://d3js.org/) for Treemap layout & calculations.
+- **Data Fetching**: [SWR](https://swr.vercel.app/) for polling and stale-while-revalidate caching.
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+- **Icons**: [Lucide React](https://lucide.dev/)
 
-## How to Run Locally
+## Running Locally
 
-### 1. Backend
+### 1. Installation
+Navigate to the `web` directory and install dependencies:
 ```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt  # (or install fastapi uvicorn requests pandas sqlalchemy)
-export PYTHONPATH=$PYTHONPATH:.
-python3 app/main.py
-```
-The backend will automatically start polling Polymarket Gamma API and saving snapshots to `polymarket_visual.db`.
-
-### 2. Frontend
-```bash
-cd frontend
+cd web
 npm install
+```
+
+### 2. Run Development Server
+```bash
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) to view the dashboard.
+Open [http://localhost:3001](http://localhost:3001) in your browser.
 
-## Known Limitations / MVP Notes
-- This MVP tracks binary markets primarily (Yes/No outcomes).
-- Signals require at least 2 snapshots to calculate delta (wait ~5-10 mins after first start).
-- Data polling is currently set to 5-minute intervals.
-- The "Signal Explanation" is currently rule-based and template-driven.
+## Project Structure
+- `web/src/app/api/markets`: Next.js Proxy route for API requests.
+- `web/src/components/viz/MarketMap.tsx`: Main D3-based Treemap component.
+- `web/src/hooks/useMarketData.ts`: Data management and polling hook.
+- `web/src/lib/api.ts`: Polymarket API client with data normalization.
+
