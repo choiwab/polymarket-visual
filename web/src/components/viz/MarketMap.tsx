@@ -22,18 +22,24 @@ export default function MarketMap({ minVolume = 1000 }: MarketMapProps) {
 
         // Create hierarchy
         // We group everything under a single "root"
-        const hierarchyData = {
+        interface HierarchyData {
+            name: string;
+            children?: MarketNode[];
+            volume?: number;
+        }
+
+        const hierarchyData: HierarchyData = {
             name: 'root',
             children: filtered,
         };
 
-        const rootNode = d3.hierarchy(hierarchyData)
-            .sum((d: any) => d.volume) // Size by volume
+        const rootNode = d3.hierarchy<HierarchyData>(hierarchyData)
+            .sum((d) => d.volume || 0) // Size by volume
             .sort((a, b) => (b.value || 0) - (a.value || 0));
 
         // Compute layout
         // We'll compute normalized coordinates (0-100%) and let CSS handle the actual pixels.
-        const treemapLayout = d3.treemap()
+        const treemapLayout = d3.treemap<HierarchyData>()
             .size([100, 100]) // Output percentages directly
             .paddingInner(0.2)
             .round(false)
