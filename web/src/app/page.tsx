@@ -236,10 +236,15 @@ export default function Home() {
                         )}
                     </div>
                 ) : (
-                    <WorldMap
-                        events={mappableEvents}
-                        onEventClick={handleWorldMapEventClick}
-                    />
+                    <div className="flex items-center justify-center h-full">
+                        <div className="flex flex-col items-center gap-4 text-center">
+                            <div className="text-6xl">🚧</div>
+                            <h2 className="text-2xl font-bold text-white">Under Construction</h2>
+                            <p className="text-zinc-400 max-w-md">
+                                The World Map feature is currently being improved. Please check back soon!
+                            </p>
+                        </div>
+                    </div>
                 )}
             </div>
 
