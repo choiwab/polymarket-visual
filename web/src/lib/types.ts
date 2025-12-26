@@ -91,12 +91,16 @@ export interface MarketNode {
     question: string;
     volume: number;
     volume24hr?: number;
-    outcomeProb: number; // Probability of "Yes" (0-1)
+    outcomeProb: number; // Probability of "Yes" or highest outcome (0-1)
     group: string; // Category or Event title (legacy)
     slug: string;
     image?: string;
     liquidity?: number;
     endTime?: string;
+    // Multi-choice market support
+    outcomes?: string[]; // ["Trump", "Biden", "Other"]
+    outcomePrices?: number[]; // [0.45, 0.40, 0.15]
+    isMultiChoice?: boolean; // true if outcomes.length > 2
 }
 
 export type MarketMapData = {
@@ -115,4 +119,43 @@ export interface TreemapNode {
     heat: number; // 0-1 for coloring
     slug?: string;
     metadata?: Record<string, unknown>;
+}
+
+// ============================================
+// Geographic Types (for World Map)
+// ============================================
+
+export type LocationType = 'point' | 'regional' | 'global';
+
+export interface GeoCoordinates {
+    lat: number;
+    lng: number;
+}
+
+export interface GeoLocation {
+    type: LocationType;
+    coordinates: GeoCoordinates;
+    country?: string; // ISO alpha-2 (e.g., 'US', 'GB')
+    countryName?: string; // Full name (e.g., 'United States')
+    confidence: number; // 0-1
+    source: 'title' | 'description' | 'institution' | 'default';
+}
+
+export interface GeoEnrichedEvent extends ProcessedEvent {
+    geoLocation: GeoLocation;
+}
+
+// ============================================
+// Tab Navigation Types
+// ============================================
+
+export type TabId = 'heatmap' | 'worldmap';
+
+// ============================================
+// Panel State Types
+// ============================================
+
+export interface PanelState {
+    isOpen: boolean;
+    eventId?: string;
 }
