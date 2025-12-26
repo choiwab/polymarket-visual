@@ -15,6 +15,10 @@ interface HeatMapNode {
     heat: number; // 0-1 for coloring
     probability?: number; // Only for markets
     slug?: string;
+    // Multi-choice market support
+    outcomes?: string[];
+    outcomePrices?: number[];
+    isMultiChoice?: boolean;
 }
 
 interface HeatMapProps {
@@ -81,6 +85,10 @@ function transformToNodes(
                 heat: 0, // Not used for markets
                 probability: market.outcomeProb,
                 slug: market.slug,
+                // Multi-choice support
+                outcomes: market.outcomes,
+                outcomePrices: market.outcomePrices,
+                isMultiChoice: market.isMultiChoice,
             }));
 
         default:
@@ -194,6 +202,9 @@ export default function HeatMap({
                               handleClick(e, node, false),
                       };
 
+                // Check if this is a multi-choice market
+                const isMultiChoice = isMarketLevel && node.isMultiChoice && node.outcomes && node.outcomePrices;
+
                 return (
                     <Element
                         key={node.id}
@@ -204,57 +215,94 @@ export default function HeatMap({
                             top: `${leaf.y0}%`,
                             width: `${width}%`,
                             height: `${height}%`,
-                            backgroundColor: color,
+                            backgroundColor: isMultiChoice ? 'transparent' : color,
                         }}
                     >
                         {/* Hover overlay */}
-                        <div className="w-full h-full opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 absolute top-0 left-0 border-2 border-white/50" />
+                        <div className="w-full h-full opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 absolute top-0 left-0 border-2 border-white/50 z-10" />
 
-                        {/* Content */}
-                        <div className="relative p-1.5 h-full w-full text-white overflow-hidden pointer-events-none">
-                            {width > 5 && height > 5 && (
-                                <div className="flex flex-col h-full">
-                                    {/* Title */}
-                                    <span className="font-bold text-[10px] md:text-xs leading-tight line-clamp-3 drop-shadow-md">
-                                        {node.name}
-                                    </span>
+                        {/* Multi-choice market: horizontal stacked bars */}
+                        {isMultiChoice ? (
+                            <div className="relative h-full w-full flex flex-col overflow-hidden">
+                                {node.outcomes!.map((outcome, i) => {
+                                    const prob = node.outcomePrices![i] || 0;
+                                    const barHeight = prob * 100;
+                                    const barColor = probabilityColorScale(prob);
 
-                                    {/* Stats at bottom */}
-                                    <div className="mt-auto flex items-end justify-between gap-1">
-                                        {/* Probability for markets, Heat indicator for others */}
-                                        {isMarketLevel &&
-                                        node.probability !== undefined ? (
-                                            <span className="text-[10px] font-mono font-bold opacity-90 drop-shadow-md">
-                                                {Math.round(
-                                                    node.probability * 100
-                                                )}
-                                                %
-                                            </span>
-                                        ) : (
-                                            width > 8 && (
-                                                <span
-                                                    className="text-[9px] opacity-70"
-                                                    title="Activity level"
-                                                >
-                                                    {node.heat > 0.7
-                                                        ? '🔥'
-                                                        : node.heat > 0.4
-                                                        ? '⚡'
-                                                        : ''}
+                                    return (
+                                        <div
+                                            key={i}
+                                            style={{
+                                                height: `${barHeight}%`,
+                                                backgroundColor: barColor,
+                                                minHeight: barHeight > 0 ? '2px' : '0',
+                                            }}
+                                            className="flex items-center px-1 text-white overflow-hidden"
+                                        >
+                                            {barHeight > 8 && width > 6 && (
+                                                <span className="text-[8px] font-medium truncate drop-shadow-md">
+                                                    {outcome}: {Math.round(prob * 100)}%
                                                 </span>
-                                            )
-                                        )}
-
-                                        {/* Volume */}
-                                        {width > 8 && (
-                                            <span className="text-[9px] opacity-70 font-mono">
-                                                ${d3.format('.2s')(node.value)}
-                                            </span>
-                                        )}
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                                {/* Title overlay for multi-choice */}
+                                {width > 8 && height > 10 && (
+                                    <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1 py-0.5">
+                                        <span className="text-[8px] text-white font-bold truncate block drop-shadow-md">
+                                            {node.name}
+                                        </span>
                                     </div>
-                                </div>
-                            )}
-                        </div>
+                                )}
+                            </div>
+                        ) : (
+                            /* Binary market / Category / Event: standard content */
+                            <div className="relative p-1.5 h-full w-full text-white overflow-hidden pointer-events-none">
+                                {width > 5 && height > 5 && (
+                                    <div className="flex flex-col h-full">
+                                        {/* Title */}
+                                        <span className="font-bold text-[10px] md:text-xs leading-tight line-clamp-3 drop-shadow-md">
+                                            {node.name}
+                                        </span>
+
+                                        {/* Stats at bottom */}
+                                        <div className="mt-auto flex items-end justify-between gap-1">
+                                            {/* Probability for markets, Heat indicator for others */}
+                                            {isMarketLevel &&
+                                            node.probability !== undefined ? (
+                                                <span className="text-[10px] font-mono font-bold opacity-90 drop-shadow-md">
+                                                    {Math.round(
+                                                        node.probability * 100
+                                                    )}
+                                                    %
+                                                </span>
+                                            ) : (
+                                                width > 8 && (
+                                                    <span
+                                                        className="text-[9px] opacity-70"
+                                                        title="Activity level"
+                                                    >
+                                                        {node.heat > 0.7
+                                                            ? '🔥'
+                                                            : node.heat > 0.4
+                                                            ? '⚡'
+                                                            : ''}
+                                                    </span>
+                                                )
+                                            )}
+
+                                            {/* Volume */}
+                                            {width > 8 && (
+                                                <span className="text-[9px] opacity-70 font-mono">
+                                                    ${d3.format('.2s')(node.value)}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </Element>
                 );
             })}

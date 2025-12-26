@@ -69,12 +69,19 @@ function computeHeat(volume24h: number, volumeTotal: number): number {
 
 function parseMarketFromEvent(market: Record<string, unknown>, eventId: string): MarketNode | null {
     try {
-        const outcomes = JSON.parse((market.outcomes as string) || '[]');
-        // Only include binary markets
-        if (outcomes.length !== 2) return null;
+        const outcomes: string[] = JSON.parse((market.outcomes as string) || '[]');
+        const prices: number[] = JSON.parse((market.outcomePrices as string) || '[]').map(Number);
 
-        const prices = JSON.parse((market.outcomePrices as string) || '[]');
-        const yesProb = Number(prices[0] || 0);
+        // Need at least 2 outcomes
+        if (outcomes.length < 2 || prices.length < 2) return null;
+
+        const isMultiChoice = outcomes.length > 2;
+
+        // For binary: use first price (YES probability)
+        // For multi-choice: use highest probability for sorting/sizing
+        const outcomeProb = isMultiChoice
+            ? Math.max(...prices)
+            : prices[0] || 0;
 
         return {
             id: market.id as string,
@@ -82,12 +89,16 @@ function parseMarketFromEvent(market: Record<string, unknown>, eventId: string):
             question: market.question as string,
             volume: Number(market.volume || 0),
             volume24hr: Number(market.volume24hr || 0),
-            outcomeProb: yesProb,
+            outcomeProb,
             group: '',
             slug: market.slug as string,
             image: (market.image as string) || (market.icon as string),
             liquidity: Number(market.liquidity || 0),
             endTime: market.endDate as string,
+            // Multi-choice support
+            outcomes,
+            outcomePrices: prices,
+            isMultiChoice,
         };
     } catch {
         return null;

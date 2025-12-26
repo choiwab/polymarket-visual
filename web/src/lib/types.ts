@@ -91,12 +91,16 @@ export interface MarketNode {
     question: string;
     volume: number;
     volume24hr?: number;
-    outcomeProb: number; // Probability of "Yes" (0-1)
+    outcomeProb: number; // Probability of "Yes" or highest outcome (0-1)
     group: string; // Category or Event title (legacy)
     slug: string;
     image?: string;
     liquidity?: number;
     endTime?: string;
+    // Multi-choice market support
+    outcomes?: string[]; // ["Trump", "Biden", "Other"]
+    outcomePrices?: number[]; // [0.45, 0.40, 0.15]
+    isMultiChoice?: boolean; // true if outcomes.length > 2
 }
 
 export type MarketMapData = {
