@@ -15,6 +15,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "PolyViz",
   description: "Visualising the world",
+  icons: {
+    icon: [
+      { url: "/pmv-logo.png", type: "image/png" },
+    ],
+    shortcut: "/pmv-logo.png",
+    apple: "/pmv-logo.png",
+  },
 };
 
 export default function RootLayout({
