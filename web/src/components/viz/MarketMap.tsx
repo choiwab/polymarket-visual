@@ -4,8 +4,6 @@ import React, { useMemo } from 'react';
 import * as d3 from 'd3';
 import { MarketNode } from '@/lib/types';
 import { useMarketData } from '@/hooks/useMarketData';
-import clsx from 'clsx';
-import { ExternalLink } from 'lucide-react';
 
 interface MarketMapProps {
     minVolume?: number;
@@ -47,7 +45,7 @@ export default function MarketMap({ minVolume = 1000 }: MarketMapProps) {
 
         treemapLayout(rootNode);
 
-        return rootNode;
+        return rootNode as d3.HierarchyRectangularNode<HierarchyData>;
     }, [markets, minVolume]);
 
     // Color Scale
@@ -74,8 +72,8 @@ export default function MarketMap({ minVolume = 1000 }: MarketMapProps) {
 
     return (
         <div className="relative w-full h-full overflow-hidden bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl">
-            {root.leaves().map((leaf: any) => {
-                const market = leaf.data as MarketNode;
+            {root.leaves().map((leaf) => {
+                const market = leaf.data as unknown as MarketNode;
                 const width = leaf.x1 - leaf.x0;
                 const height = leaf.y1 - leaf.y0;
 
