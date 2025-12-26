@@ -126,7 +126,7 @@ export default function Home() {
         <main className="flex h-screen flex-col bg-zinc-950 text-zinc-100 font-sans overflow-hidden">
             {/* Header */}
             <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/50 backdrop-blur-sm sticky top-0 z-50">
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-3 w-64">
                     <Image
                         src="/pmv-logo.png"
                         alt="PolyViz Logo"
@@ -143,43 +143,46 @@ export default function Home() {
                 {/* Tab Navigation */}
                 <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />
 
-                {/* Settings (only show for heatmap) */}
-                {activeTab === 'heatmap' && (
-                    <div className="flex items-center space-x-6 text-sm">
-                        <div className="flex items-center space-x-2">
-                            <Settings2 className="w-4 h-4 text-zinc-500" />
-                            <span className="text-zinc-500 text-xs uppercase tracking-wider font-semibold">
-                                Min Volume:
-                            </span>
-                            <input
-                                type="range"
-                                min="10000"
-                                max="10000000"
-                                step="100000"
-                                value={minVolume}
-                                onChange={(e) =>
-                                    setMinVolume(Number(e.target.value))
-                                }
-                                className="w-32 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-600 hover:accent-blue-500"
-                            />
-                            <span className="font-mono text-zinc-300 w-16 text-right">
-                                ${(minVolume / 1000000).toFixed(1)}M
+                {/* Right section - fixed width to keep tabs centered */}
+                <div className="w-64 flex justify-end">
+                    {/* Settings (only show for heatmap) */}
+                    {activeTab === 'heatmap' && (
+                        <div className="flex items-center space-x-6 text-sm">
+                            <div className="flex items-center space-x-2">
+                                <Settings2 className="w-4 h-4 text-zinc-500" />
+                                <span className="text-zinc-500 text-xs uppercase tracking-wider font-semibold">
+                                    Min Volume:
+                                </span>
+                                <input
+                                    type="range"
+                                    min="10000"
+                                    max="10000000"
+                                    step="100000"
+                                    value={minVolume}
+                                    onChange={(e) =>
+                                        setMinVolume(Number(e.target.value))
+                                    }
+                                    className="w-32 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-600 hover:accent-blue-500"
+                                />
+                                <span className="font-mono text-zinc-300 w-16 text-right">
+                                    ${(minVolume / 1000000).toFixed(1)}M
+                                </span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* World Map stats */}
+                    {activeTab === 'worldmap' && (
+                        <div className="flex items-center space-x-4 text-sm text-zinc-400">
+                            <span>
+                                <span className="text-white font-medium">
+                                    {geoStats.mappable}
+                                </span>{' '}
+                                mappable events
                             </span>
                         </div>
-                    </div>
-                )}
-
-                {/* World Map stats */}
-                {activeTab === 'worldmap' && (
-                    <div className="flex items-center space-x-4 text-sm text-zinc-400">
-                        <span>
-                            <span className="text-white font-medium">
-                                {geoStats.mappable}
-                            </span>{' '}
-                            mappable events
-                        </span>
-                    </div>
-                )}
+                    )}
+                </div>
             </header>
 
             {/* Navigation Bar - only show for heatmap */}
