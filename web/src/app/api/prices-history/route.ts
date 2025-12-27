@@ -5,8 +5,7 @@ const BASE_URL = 'https://clob.polymarket.com';
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const tokenId = searchParams.get('token');
-    const startTs = searchParams.get('startTs');
-    const endTs = searchParams.get('endTs');
+    const interval = searchParams.get('interval') || '1d'; // 1h, 1d, 1w, etc.
     const fidelity = searchParams.get('fidelity') || '60'; // minutes
 
     if (!tokenId) {
@@ -16,8 +15,7 @@ export async function GET(request: Request) {
     // Build query params for Polymarket CLOB API
     const params = new URLSearchParams();
     params.set('market', tokenId);
-    if (startTs) params.set('startTs', startTs);
-    if (endTs) params.set('endTs', endTs);
+    params.set('interval', interval);
     params.set('fidelity', fidelity);
 
     const targetUrl = `${BASE_URL}/prices-history?${params.toString()}`;

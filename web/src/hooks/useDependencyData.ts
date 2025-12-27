@@ -6,6 +6,7 @@ import {
     DependencyMapFilters,
     ProcessedEvent,
     MarketNode,
+    PriceHistoryPoint,
 } from '@/lib/types';
 import { usePriceHistory } from './usePriceHistory';
 import {
@@ -59,38 +60,75 @@ export function useDependencyData(
         return events.find((e) => e.id === centerMarket.eventId) || null;
     }, [centerMarket, events]);
 
-    // Get market IDs to fetch price history for
+    // Get markets to fetch price history for
     // Include center market + all markets in same event + top volume markets
-    const marketIdsForHistory = useMemo(() => {
+    const marketsForHistory = useMemo(() => {
         if (!centerMarketId) return [];
 
-        const ids = new Set<string>([centerMarketId]);
+        const marketMap = new Map<string, MarketNode>();
+
+        // Add center market
+        if (centerMarket) {
+            marketMap.set(centerMarketId, centerMarket);
+        }
 
         // Add markets from same event
         if (centerEvent) {
             for (const market of centerEvent.markets) {
-                ids.add(market.id);
+                marketMap.set(market.id, market);
             }
         }
 
         // Add top 20 markets by volume for cross-event correlations
         if (filters.showCrossEvent) {
             const sortedMarkets = [...allMarkets]
+                .filter(m => m.clobTokenIds && m.clobTokenIds.length > 0)
                 .sort((a, b) => b.volume - a.volume)
                 .slice(0, 20);
             for (const market of sortedMarkets) {
-                ids.add(market.id);
+                marketMap.set(market.id, market);
             }
         }
 
-        return Array.from(ids);
-    }, [centerMarketId, centerEvent, allMarkets, filters.showCrossEvent]);
+        return Array.from(marketMap.values());
+    }, [centerMarketId, centerMarket, centerEvent, allMarkets, filters.showCrossEvent]);
 
-    // Fetch price histories
-    const { histories, isLoading, isError } = usePriceHistory(
-        marketIdsForHistory,
+    // Build mapping from clobTokenId to marketId
+    const { tokenToMarketMap, tokenIds } = useMemo(() => {
+        const map = new Map<string, string>();
+        const ids: string[] = [];
+
+        for (const market of marketsForHistory) {
+            // Use the first clobTokenId (YES token) for price history
+            if (market.clobTokenIds && market.clobTokenIds.length > 0) {
+                const tokenId = market.clobTokenIds[0];
+                map.set(tokenId, market.id);
+                ids.push(tokenId);
+            }
+        }
+
+        return { tokenToMarketMap: map, tokenIds: ids };
+    }, [marketsForHistory]);
+
+    // Fetch price histories using clobTokenIds
+    const { histories: tokenHistories, isLoading, isError } = usePriceHistory(
+        tokenIds,
         filters.timeWindow
     );
+
+    // Map token histories back to market IDs
+    const histories = useMemo(() => {
+        const marketHistories = new Map<string, PriceHistoryPoint[]>();
+
+        for (const [tokenId, history] of tokenHistories) {
+            const marketId = tokenToMarketMap.get(tokenId);
+            if (marketId && history.length > 0) {
+                marketHistories.set(marketId, history);
+            }
+        }
+
+        return marketHistories;
+    }, [tokenHistories, tokenToMarketMap]);
 
     // Build the dependency graph
     const graph = useMemo((): DependencyGraph | null => {
@@ -226,7 +264,7 @@ export function useDependencyData(
 function marketToNode(
     market: MarketNode,
     event: ProcessedEvent | null | undefined,
-    histories: Map<string, import('@/lib/types').PriceHistoryPoint[]>
+    histories: Map<string, PriceHistoryPoint[]>
 ): DependencyNode {
     const categoryName = getCategoryName(event?.categoryId || 'other');
     const history = histories.get(market.id);

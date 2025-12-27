@@ -102,6 +102,8 @@ export interface MarketNode {
     outcomes?: string[]; // ["Trump", "Biden", "Other"]
     outcomePrices?: number[]; // [0.45, 0.40, 0.15]
     isMultiChoice?: boolean; // true if outcomes.length > 2
+    // CLOB token IDs for price history API
+    clobTokenIds?: string[]; // [YES_token, NO_token]
 }
 
 export type MarketMapData = {

@@ -76,6 +76,17 @@ function parseMarketFromEvent(market: Record<string, unknown>, eventId: string):
         const prices = JSON.parse((market.outcomePrices as string) || '[]');
         const yesProb = Number(prices[0] || 0);
 
+        // Parse CLOB token IDs for price history API
+        let clobTokenIds: string[] | undefined;
+        try {
+            const rawTokenIds = JSON.parse((market.clobTokenIds as string) || '[]');
+            if (Array.isArray(rawTokenIds) && rawTokenIds.length > 0) {
+                clobTokenIds = rawTokenIds;
+            }
+        } catch {
+            // clobTokenIds not available
+        }
+
         return {
             id: market.id as string,
             eventId,
@@ -88,6 +99,7 @@ function parseMarketFromEvent(market: Record<string, unknown>, eventId: string):
             image: (market.image as string) || (market.icon as string),
             liquidity: Number(market.liquidity || 0),
             endTime: market.endDate as string,
+            clobTokenIds,
         };
     } catch {
         return null;
@@ -151,16 +163,17 @@ export async function fetchEvents(): Promise<ProcessedEvent[]> {
 
 interface RawPriceHistoryPoint {
     t: number; // timestamp in seconds
-    p: string; // price as string
+    p: number; // price as number
 }
 
-function getTimeWindowMs(window: TimeWindow): number {
-    const ms = {
-        '1h': 60 * 60 * 1000,
-        '24h': 24 * 60 * 60 * 1000,
-        '7d': 7 * 24 * 60 * 60 * 1000,
+// Map TimeWindow to CLOB API interval format
+function getApiInterval(window: TimeWindow): string {
+    const intervals = {
+        '1h': '1h',
+        '24h': '1d',
+        '7d': '1w',
     };
-    return ms[window];
+    return intervals[window];
 }
 
 function getFidelityMinutes(window: TimeWindow): number {
@@ -175,15 +188,14 @@ function getFidelityMinutes(window: TimeWindow): number {
 
 export async function fetchPriceHistory(
     tokenId: string,
-    interval: TimeWindow = '24h'
+    timeWindow: TimeWindow = '24h'
 ): Promise<PriceHistoryPoint[]> {
     try {
-        const now = Date.now();
-        const startTs = now - getTimeWindowMs(interval);
-        const fidelity = getFidelityMinutes(interval);
+        const interval = getApiInterval(timeWindow);
+        const fidelity = getFidelityMinutes(timeWindow);
 
         const response = await fetch(
-            `${BASE_URL}/prices-history?token=${tokenId}&startTs=${startTs}&endTs=${now}&fidelity=${fidelity}`
+            `${BASE_URL}/prices-history?token=${tokenId}&interval=${interval}&fidelity=${fidelity}`
         );
 
         if (!response.ok) {
@@ -198,7 +210,7 @@ export async function fetchPriceHistory(
 
         return history.map((point) => ({
             timestamp: point.t * 1000, // Convert seconds to ms
-            price: parseFloat(point.p) || 0,
+            price: typeof point.p === 'number' ? point.p : parseFloat(String(point.p)) || 0,
         }));
     } catch (error) {
         console.error('Error fetching price history:', error);
