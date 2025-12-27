@@ -1,4 +1,4 @@
-import { MarketNode, RawPolymarketEvent, ProcessedEvent } from './types';
+import { MarketNode, RawPolymarketEvent, ProcessedEvent, PriceHistoryPoint, TimeWindow } from './types';
 import { classifyEvent } from './categories';
 
 const BASE_URL = '/api';
@@ -143,4 +143,88 @@ export async function fetchEvents(): Promise<ProcessedEvent[]> {
         console.error('Error fetching events:', error);
         return [];
     }
+}
+
+// ============================================
+// Price History API
+// ============================================
+
+interface RawPriceHistoryPoint {
+    t: number; // timestamp in seconds
+    p: string; // price as string
+}
+
+function getTimeWindowMs(window: TimeWindow): number {
+    const ms = {
+        '1h': 60 * 60 * 1000,
+        '24h': 24 * 60 * 60 * 1000,
+        '7d': 7 * 24 * 60 * 60 * 1000,
+    };
+    return ms[window];
+}
+
+function getFidelityMinutes(window: TimeWindow): number {
+    // Fidelity determines data granularity
+    const fidelity = {
+        '1h': 1,    // 1 minute intervals for 1h window
+        '24h': 15,  // 15 minute intervals for 24h window
+        '7d': 60,   // 1 hour intervals for 7d window
+    };
+    return fidelity[window];
+}
+
+export async function fetchPriceHistory(
+    tokenId: string,
+    interval: TimeWindow = '24h'
+): Promise<PriceHistoryPoint[]> {
+    try {
+        const now = Date.now();
+        const startTs = now - getTimeWindowMs(interval);
+        const fidelity = getFidelityMinutes(interval);
+
+        const response = await fetch(
+            `${BASE_URL}/prices-history?token=${tokenId}&startTs=${startTs}&endTs=${now}&fidelity=${fidelity}`
+        );
+
+        if (!response.ok) {
+            console.error(`Failed to fetch price history for ${tokenId}:`, response.statusText);
+            return [];
+        }
+
+        const data = await response.json();
+
+        // Handle various response formats
+        const history: RawPriceHistoryPoint[] = Array.isArray(data) ? data : (data.history || []);
+
+        return history.map((point) => ({
+            timestamp: point.t * 1000, // Convert seconds to ms
+            price: parseFloat(point.p) || 0,
+        }));
+    } catch (error) {
+        console.error('Error fetching price history:', error);
+        return [];
+    }
+}
+
+export async function fetchMultiplePriceHistories(
+    tokenIds: string[],
+    interval: TimeWindow = '24h'
+): Promise<Map<string, PriceHistoryPoint[]>> {
+    const results = new Map<string, PriceHistoryPoint[]>();
+
+    // Batch requests with Promise.allSettled for fault tolerance
+    const promises = tokenIds.map(async (tokenId) => {
+        const history = await fetchPriceHistory(tokenId, interval);
+        return { tokenId, history };
+    });
+
+    const settled = await Promise.allSettled(promises);
+
+    for (const result of settled) {
+        if (result.status === 'fulfilled') {
+            results.set(result.value.tokenId, result.value.history);
+        }
+    }
+
+    return results;
 }

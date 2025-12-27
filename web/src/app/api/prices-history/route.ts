@@ -1,0 +1,48 @@
+import { NextResponse } from 'next/server';
+
+const BASE_URL = 'https://clob.polymarket.com';
+
+export async function GET(request: Request) {
+    const { searchParams } = new URL(request.url);
+    const tokenId = searchParams.get('token');
+    const startTs = searchParams.get('startTs');
+    const endTs = searchParams.get('endTs');
+    const fidelity = searchParams.get('fidelity') || '60'; // minutes
+
+    if (!tokenId) {
+        return NextResponse.json({ error: 'Missing token parameter' }, { status: 400 });
+    }
+
+    // Build query params for Polymarket CLOB API
+    const params = new URLSearchParams();
+    params.set('market', tokenId);
+    if (startTs) params.set('startTs', startTs);
+    if (endTs) params.set('endTs', endTs);
+    params.set('fidelity', fidelity);
+
+    const targetUrl = `${BASE_URL}/prices-history?${params.toString()}`;
+
+    try {
+        const res = await fetch(targetUrl, {
+            headers: {
+                'Accept': 'application/json',
+            },
+        });
+
+        if (!res.ok) {
+            // Try to get error details
+            const errorText = await res.text();
+            console.error('Prices history API error:', res.status, errorText);
+            return NextResponse.json(
+                { error: res.statusText, details: errorText },
+                { status: res.status }
+            );
+        }
+
+        const data = await res.json();
+        return NextResponse.json(data);
+    } catch (error) {
+        console.error('Prices history fetch error:', error);
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
+}

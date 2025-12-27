@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import HeatMap from '@/components/viz/HeatMap';
 import WorldMap from '@/components/viz/WorldMap';
+import { DependencyMap } from '@/components/viz/DependencyMap';
 import Breadcrumb from '@/components/nav/Breadcrumb';
 import TabNavigation from '@/components/nav/TabNavigation';
 import EventPanel from '@/components/panels/EventPanel';
@@ -16,6 +17,7 @@ import {
     MarketNode,
     TabId,
     PanelState,
+    DependencyMapFilters,
 } from '@/lib/types';
 import { Settings2, ArrowLeft, Loader2 } from 'lucide-react';
 import Image from 'next/image';
@@ -33,8 +35,18 @@ export default function Home() {
     // Panel state (for World Map)
     const [panelState, setPanelState] = useState<PanelState>({ isOpen: false });
 
+    // Dependency Map state
+    const [selectedMarketId, setSelectedMarketId] = useState<string | null>(null);
+    const [dependencyFilters, setDependencyFilters] = useState<DependencyMapFilters>({
+        correlationThreshold: 0.6,
+        timeWindow: '24h',
+        dependencyType: 'all',
+        showCrossEvent: true,
+        maxEdges: 5,
+    });
+
     // Data hooks
-    const { categories, getEventsForCategory, getEventById, isLoading } =
+    const { events, categories, getEventsForCategory, getEventById, isLoading } =
         useEventData();
     const { mappableEvents, getGeoEventById, geoStats } = useGeoEnrichedEvents();
 
@@ -238,7 +250,7 @@ export default function Home() {
                             />
                         )}
                     </div>
-                ) : (
+                ) : activeTab === 'worldmap' ? (
                     <div className="flex items-center justify-center h-full">
                         <div className="flex flex-col items-center gap-4 text-center">
                             <div className="text-6xl">🚧</div>
@@ -248,7 +260,15 @@ export default function Home() {
                             </p>
                         </div>
                     </div>
-                )}
+                ) : activeTab === 'dependency' ? (
+                    <DependencyMap
+                        events={events}
+                        selectedMarketId={selectedMarketId}
+                        onMarketSelect={setSelectedMarketId}
+                        filters={dependencyFilters}
+                        onFiltersChange={setDependencyFilters}
+                    />
+                ) : null}
             </div>
 
             {/* Footer with legend */}
@@ -273,6 +293,26 @@ export default function Home() {
                             </div>
                             <span>|</span>
                             <span>Opacity = Location Confidence</span>
+                        </>
+                    ) : activeTab === 'dependency' ? (
+                        <>
+                            <span>Node Size = Volume</span>
+                            <span>|</span>
+                            <span>Node Color = Category</span>
+                            <span>|</span>
+                            <span>Edge:</span>
+                            <div className="flex items-center gap-1">
+                                <div className="w-3 h-0.5 bg-zinc-500" />
+                                <span>Structural</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <div className="w-3 h-0.5 bg-green-500" />
+                                <span>+Corr</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <div className="w-3 h-0.5 bg-red-500" />
+                                <span>-Corr</span>
+                            </div>
                         </>
                     ) : viewState.level === 'market' ? (
                         <>
@@ -307,6 +347,8 @@ export default function Home() {
                 <span>
                     {activeTab === 'worldmap'
                         ? 'Click event for details'
+                        : activeTab === 'dependency'
+                        ? 'Click node to recenter | Hover edge for details'
                         : 'Size = Volume | Click to drill down'}
                 </span>
             </footer>
