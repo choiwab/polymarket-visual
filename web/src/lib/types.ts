@@ -98,6 +98,7 @@ export interface MarketNode {
     image?: string;
     liquidity?: number;
     endTime?: string;
+    endDate?: string; // ISO date string for resolution date
     // Multi-choice market support
     outcomes?: string[]; // ["Trump", "Biden", "Other"]
     outcomePrices?: number[]; // [0.45, 0.40, 0.15]
@@ -158,7 +159,7 @@ export type TabId = 'heatmap' | 'worldmap' | 'dependency';
 // Dependency Map Types
 // ============================================
 
-export type DependencyType = 'structural' | 'correlation';
+export type DependencyType = 'structural' | 'correlation' | 'entity' | 'temporal';
 
 export type TimeWindow = '1h' | '24h' | '7d';
 
@@ -179,6 +180,11 @@ export interface DependencyEdge {
     // Structural-specific
     sharedEventId?: string;
     sharedEventTitle?: string;
+    // Entity-specific
+    sharedEntities?: string[]; // Names of shared entities
+    // Temporal-specific
+    daysDiff?: number; // Days between resolution dates
+    precedence?: 'before' | 'after' | 'same'; // Target resolves before/after source
     // For display
     explanation?: string;
 }
@@ -215,9 +221,11 @@ export interface DependencyGraph {
 export interface DependencyMapFilters {
     correlationThreshold: number; // 0-1, default 0.6
     timeWindow: TimeWindow;
-    dependencyType: 'all' | 'structural' | 'correlation';
+    dependencyType: 'all' | 'structural' | 'correlation' | 'entity' | 'temporal';
     showCrossEvent: boolean; // false = same event only
     maxEdges: number; // default 5
+    minSharedEntities: number; // default 1, for entity type
+    maxDaysDiff: number; // default 14, for temporal type
 }
 
 // ============================================

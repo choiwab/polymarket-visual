@@ -8,11 +8,37 @@ interface DependencyTooltipProps {
     position: { x: number; y: number } | null;
 }
 
+// Type badge colors and labels
+const TYPE_CONFIG = {
+    structural: { bg: 'bg-zinc-700', text: 'text-zinc-300', label: 'Same Event' },
+    correlation: { bg: 'bg-green-900/50', text: 'text-green-400', label: 'Correlation' },
+    entity: { bg: 'bg-blue-900/50', text: 'text-blue-400', label: 'Shared Entity' },
+    temporal: { bg: 'bg-purple-900/50', text: 'text-purple-400', label: 'Time Link' },
+};
+
+// Strength bar colors
+const STRENGTH_COLORS = {
+    structural: 'bg-zinc-500',
+    correlation: 'bg-green-500',
+    entity: 'bg-blue-500',
+    temporal: 'bg-purple-500',
+};
+
 export default function DependencyTooltip({ edge, position }: DependencyTooltipProps) {
     if (!edge || !position) return null;
 
     const isPositive = edge.correlation !== undefined && edge.correlation > 0;
     const isNegative = edge.correlation !== undefined && edge.correlation < 0;
+
+    // Get type config with fallback
+    const typeConfig = TYPE_CONFIG[edge.type] || TYPE_CONFIG.structural;
+    const strengthColor = STRENGTH_COLORS[edge.type] || STRENGTH_COLORS.structural;
+
+    // For correlation, adjust color based on direction
+    const adjustedTypeConfig =
+        edge.type === 'correlation' && isNegative
+            ? { bg: 'bg-red-900/50', text: 'text-red-400', label: 'Correlation' }
+            : typeConfig;
 
     return (
         <div
@@ -25,15 +51,9 @@ export default function DependencyTooltip({ edge, position }: DependencyTooltipP
             {/* Dependency Type */}
             <div className="flex items-center gap-2 mb-2">
                 <span
-                    className={`px-1.5 py-0.5 text-xs font-medium rounded ${
-                        edge.type === 'structural'
-                            ? 'bg-zinc-700 text-zinc-300'
-                            : isPositive
-                            ? 'bg-green-900/50 text-green-400'
-                            : 'bg-red-900/50 text-red-400'
-                    }`}
+                    className={`px-1.5 py-0.5 text-xs font-medium rounded ${adjustedTypeConfig.bg} ${adjustedTypeConfig.text}`}
                 >
-                    {edge.type === 'structural' ? 'Structural' : 'Correlation'}
+                    {adjustedTypeConfig.label}
                 </span>
 
                 {edge.timeWindow && (
@@ -42,7 +62,7 @@ export default function DependencyTooltip({ edge, position }: DependencyTooltipP
             </div>
 
             {/* Correlation Value */}
-            {edge.correlation !== undefined && (
+            {edge.type === 'correlation' && edge.correlation !== undefined && (
                 <div className="mb-2">
                     <span className="text-zinc-400 text-xs">Correlation: </span>
                     <span
@@ -52,6 +72,32 @@ export default function DependencyTooltip({ edge, position }: DependencyTooltipP
                     >
                         {edge.correlation > 0 ? '+' : ''}
                         {(edge.correlation * 100).toFixed(1)}%
+                    </span>
+                </div>
+            )}
+
+            {/* Shared Entities */}
+            {edge.type === 'entity' && edge.sharedEntities && edge.sharedEntities.length > 0 && (
+                <div className="mb-2">
+                    <span className="text-zinc-400 text-xs">Shared: </span>
+                    <span className="text-blue-300 text-xs font-medium">
+                        {edge.sharedEntities.join(', ')}
+                    </span>
+                </div>
+            )}
+
+            {/* Temporal Info */}
+            {edge.type === 'temporal' && edge.daysDiff !== undefined && (
+                <div className="mb-2">
+                    <span className="text-zinc-400 text-xs">Timing: </span>
+                    <span className="text-purple-300 text-xs font-medium">
+                        {edge.daysDiff < 1
+                            ? 'Same day'
+                            : edge.precedence === 'before'
+                            ? `${Math.round(edge.daysDiff)} days earlier`
+                            : edge.precedence === 'after'
+                            ? `${Math.round(edge.daysDiff)} days later`
+                            : `${Math.round(edge.daysDiff)} days apart`}
                     </span>
                 </div>
             )}
@@ -76,11 +122,9 @@ export default function DependencyTooltip({ edge, position }: DependencyTooltipP
                     <div className="flex-1 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
                         <div
                             className={`h-full rounded-full ${
-                                edge.type === 'structural'
-                                    ? 'bg-zinc-500'
-                                    : isPositive
-                                    ? 'bg-green-500'
-                                    : 'bg-red-500'
+                                edge.type === 'correlation' && isNegative
+                                    ? 'bg-red-500'
+                                    : strengthColor
                             }`}
                             style={{ width: `${edge.weight * 100}%` }}
                         />

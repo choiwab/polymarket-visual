@@ -12,6 +12,8 @@ interface DependencyFiltersProps {
         totalEdges: number;
         structuralEdges: number;
         correlationEdges: number;
+        entityEdges: number;
+        temporalEdges: number;
     };
 }
 
@@ -21,10 +23,12 @@ const TIME_WINDOWS: { value: TimeWindow; label: string }[] = [
     { value: '7d', label: '7D' },
 ];
 
-const DEPENDENCY_TYPES: { value: DependencyMapFilters['dependencyType']; label: string }[] = [
+const DEPENDENCY_TYPES: { value: DependencyMapFilters['dependencyType']; label: string; color?: string }[] = [
     { value: 'all', label: 'All' },
-    { value: 'structural', label: 'Event' },
-    { value: 'correlation', label: 'Corr' },
+    { value: 'structural', label: 'Event', color: '#71717a' },
+    { value: 'correlation', label: 'Corr', color: '#22c55e' },
+    { value: 'entity', label: 'Entity', color: '#3b82f6' },
+    { value: 'temporal', label: 'Time', color: '#a855f7' },
 ];
 
 export default function DependencyFilters({
@@ -67,16 +71,22 @@ export default function DependencyFilters({
             <div className="flex items-center gap-1">
                 <span className="text-zinc-500 text-xs">Type:</span>
                 <div className="flex bg-zinc-800 rounded-md p-0.5">
-                    {DEPENDENCY_TYPES.map(({ value, label }) => (
+                    {DEPENDENCY_TYPES.map(({ value, label, color }) => (
                         <button
                             key={value}
                             onClick={() => onFiltersChange({ ...filters, dependencyType: value })}
-                            className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                            className={`px-2 py-0.5 text-xs rounded transition-colors flex items-center gap-1 ${
                                 filters.dependencyType === value
                                     ? 'bg-zinc-700 text-white'
                                     : 'text-zinc-400 hover:text-white'
                             }`}
                         >
+                            {color && (
+                                <span
+                                    className="w-2 h-2 rounded-full"
+                                    style={{ backgroundColor: color }}
+                                />
+                            )}
                             {label}
                         </button>
                     ))}

@@ -49,13 +49,19 @@ function getCategoryColor(categoryId: string): string {
 }
 
 function getEdgeColor(edge: DependencyEdge): string {
-    if (edge.type === 'structural') {
-        return '#71717a'; // Gray for structural
+    switch (edge.type) {
+        case 'structural':
+            return '#71717a'; // Gray for structural
+        case 'correlation':
+            // Green for positive, red for negative correlation
+            return edge.correlation !== undefined && edge.correlation > 0 ? '#22c55e' : '#ef4444';
+        case 'entity':
+            return '#3b82f6'; // Blue for shared entities
+        case 'temporal':
+            return '#a855f7'; // Purple for temporal proximity
+        default:
+            return '#71717a';
     }
-    if (edge.correlation !== undefined) {
-        return edge.correlation > 0 ? '#22c55e' : '#ef4444'; // Green/Red for correlation
-    }
-    return '#71717a';
 }
 
 // ============================================
@@ -185,7 +191,11 @@ export default function DependencyGraphViz({
                 {links.map((link) => {
                     const strokeWidth = 1 + link.edge.weight * 5;
                     const opacity = 0.4 + link.edge.weight * 0.6;
-                    const strokeDasharray = link.edge.type === 'structural' ? '4,4' : 'none';
+                    // Different dash patterns for different edge types
+                    const strokeDasharray =
+                        link.edge.type === 'structural' ? '4,4' :
+                        link.edge.type === 'temporal' ? '8,4' :
+                        'none';
 
                     return (
                         <line
