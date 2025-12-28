@@ -73,6 +73,7 @@ export interface RawPolymarketMarket {
     conditionId?: string;
     outcomes?: string; // JSON string array
     outcomePrices?: string; // JSON string array
+    clobTokenIds?: string; // JSON string array of token IDs for CLOB API
     volume?: string;
     volume24hr?: string;
     liquidity?: string;
@@ -101,6 +102,8 @@ export interface MarketNode {
     outcomes?: string[]; // ["Trump", "Biden", "Other"]
     outcomePrices?: number[]; // [0.45, 0.40, 0.15]
     isMultiChoice?: boolean; // true if outcomes.length > 2
+    // CLOB token IDs for price history API
+    clobTokenIds?: string[]; // [YES_token, NO_token]
 }
 
 export type MarketMapData = {
@@ -149,7 +152,73 @@ export interface GeoEnrichedEvent extends ProcessedEvent {
 // Tab Navigation Types
 // ============================================
 
-export type TabId = 'heatmap' | 'worldmap';
+export type TabId = 'heatmap' | 'worldmap' | 'dependency';
+
+// ============================================
+// Dependency Map Types
+// ============================================
+
+export type DependencyType = 'structural' | 'correlation';
+
+export type TimeWindow = '1h' | '24h' | '7d';
+
+export interface PriceHistoryPoint {
+    timestamp: number; // Unix ms
+    price: number; // 0-1
+}
+
+export interface DependencyEdge {
+    id: string; // `${sourceId}-${targetId}`
+    sourceId: string;
+    targetId: string;
+    type: DependencyType;
+    weight: number; // 0-1 normalized strength
+    // Correlation-specific
+    correlation?: number; // -1 to 1
+    timeWindow?: TimeWindow;
+    // Structural-specific
+    sharedEventId?: string;
+    sharedEventTitle?: string;
+    // For display
+    explanation?: string;
+}
+
+export interface DependencyNode {
+    id: string;
+    marketId: string;
+    eventId: string;
+    eventTitle: string;
+    question: string;
+    volume: number;
+    volume24hr: number;
+    outcomeProb: number;
+    categoryId: string;
+    categoryName: string;
+    slug: string;
+    // Graph layout (mutable by d3-force)
+    x?: number;
+    y?: number;
+    vx?: number;
+    vy?: number;
+    fx?: number | null; // Fixed position (for ego center)
+    fy?: number | null;
+    // Visual encoding
+    volatility?: number; // 0-1 for border glow
+}
+
+export interface DependencyGraph {
+    nodes: DependencyNode[];
+    edges: DependencyEdge[];
+    centerNodeId: string;
+}
+
+export interface DependencyMapFilters {
+    correlationThreshold: number; // 0-1, default 0.6
+    timeWindow: TimeWindow;
+    dependencyType: 'all' | 'structural' | 'correlation';
+    showCrossEvent: boolean; // false = same event only
+    maxEdges: number; // default 5
+}
 
 // ============================================
 // Panel State Types

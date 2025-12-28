@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Map, Grid3X3 } from 'lucide-react';
+import { Map, Grid3X3, Network } from 'lucide-react';
 import { TabId } from '@/lib/types';
 
 interface TabNavigationProps {
@@ -12,6 +12,7 @@ interface TabNavigationProps {
 const TABS: Array<{ id: TabId; label: string; icon: React.ElementType }> = [
     { id: 'heatmap', label: 'Heat Map', icon: Grid3X3 },
     { id: 'worldmap', label: 'World Map', icon: Map },
+    { id: 'dependency', label: 'Dependencies', icon: Network },
 ];
 
 export default function TabNavigation({

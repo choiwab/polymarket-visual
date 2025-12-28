@@ -1,4 +1,4 @@
-import { MarketNode, RawPolymarketEvent, ProcessedEvent } from './types';
+import { MarketNode, RawPolymarketEvent, ProcessedEvent, PriceHistoryPoint, TimeWindow } from './types';
 import { classifyEvent } from './categories';
 
 const BASE_URL = '/api';
@@ -76,6 +76,17 @@ function parseMarketFromEvent(market: Record<string, unknown>, eventId: string):
         const prices = JSON.parse((market.outcomePrices as string) || '[]');
         const yesProb = Number(prices[0] || 0);
 
+        // Parse CLOB token IDs for price history API
+        let clobTokenIds: string[] | undefined;
+        try {
+            const rawTokenIds = JSON.parse((market.clobTokenIds as string) || '[]');
+            if (Array.isArray(rawTokenIds) && rawTokenIds.length > 0) {
+                clobTokenIds = rawTokenIds;
+            }
+        } catch {
+            // clobTokenIds not available
+        }
+
         return {
             id: market.id as string,
             eventId,
@@ -88,6 +99,7 @@ function parseMarketFromEvent(market: Record<string, unknown>, eventId: string):
             image: (market.image as string) || (market.icon as string),
             liquidity: Number(market.liquidity || 0),
             endTime: market.endDate as string,
+            clobTokenIds,
         };
     } catch {
         return null;
@@ -143,4 +155,88 @@ export async function fetchEvents(): Promise<ProcessedEvent[]> {
         console.error('Error fetching events:', error);
         return [];
     }
+}
+
+// ============================================
+// Price History API
+// ============================================
+
+interface RawPriceHistoryPoint {
+    t: number; // timestamp in seconds
+    p: number; // price as number
+}
+
+// Map TimeWindow to CLOB API interval format
+function getApiInterval(window: TimeWindow): string {
+    const intervals = {
+        '1h': '1h',
+        '24h': '1d',
+        '7d': '1w',
+    };
+    return intervals[window];
+}
+
+function getFidelityMinutes(window: TimeWindow): number {
+    // Fidelity determines data granularity
+    const fidelity = {
+        '1h': 1,    // 1 minute intervals for 1h window
+        '24h': 15,  // 15 minute intervals for 24h window
+        '7d': 60,   // 1 hour intervals for 7d window
+    };
+    return fidelity[window];
+}
+
+export async function fetchPriceHistory(
+    tokenId: string,
+    timeWindow: TimeWindow = '24h'
+): Promise<PriceHistoryPoint[]> {
+    try {
+        const interval = getApiInterval(timeWindow);
+        const fidelity = getFidelityMinutes(timeWindow);
+
+        const response = await fetch(
+            `${BASE_URL}/prices-history?token=${tokenId}&interval=${interval}&fidelity=${fidelity}`
+        );
+
+        if (!response.ok) {
+            console.error(`Failed to fetch price history for ${tokenId}:`, response.statusText);
+            return [];
+        }
+
+        const data = await response.json();
+
+        // Handle various response formats
+        const history: RawPriceHistoryPoint[] = Array.isArray(data) ? data : (data.history || []);
+
+        return history.map((point) => ({
+            timestamp: point.t * 1000, // Convert seconds to ms
+            price: typeof point.p === 'number' ? point.p : parseFloat(String(point.p)) || 0,
+        }));
+    } catch (error) {
+        console.error('Error fetching price history:', error);
+        return [];
+    }
+}
+
+export async function fetchMultiplePriceHistories(
+    tokenIds: string[],
+    interval: TimeWindow = '24h'
+): Promise<Map<string, PriceHistoryPoint[]>> {
+    const results = new Map<string, PriceHistoryPoint[]>();
+
+    // Batch requests with Promise.allSettled for fault tolerance
+    const promises = tokenIds.map(async (tokenId) => {
+        const history = await fetchPriceHistory(tokenId, interval);
+        return { tokenId, history };
+    });
+
+    const settled = await Promise.allSettled(promises);
+
+    for (const result of settled) {
+        if (result.status === 'fulfilled') {
+            results.set(result.value.tokenId, result.value.history);
+        }
+    }
+
+    return results;
 }
