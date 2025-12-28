@@ -7,6 +7,7 @@ import { DependencyMap } from '@/components/viz/DependencyMap';
 import Breadcrumb from '@/components/nav/Breadcrumb';
 import TabNavigation from '@/components/nav/TabNavigation';
 import EventPanel from '@/components/panels/EventPanel';
+import ClusterPanel from '@/components/panels/ClusterPanel';
 import { useEventData } from '@/hooks/useEventData';
 import { useGeoEnrichedEvents } from '@/hooks/useGeoEnrichedEvents';
 import {
@@ -17,7 +18,9 @@ import {
     MarketNode,
     TabId,
     PanelState,
+    ClusterPanelState,
     DependencyMapFilters,
+    GeoEnrichedEvent,
 } from '@/lib/types';
 import { Settings2, ArrowLeft, Loader2 } from 'lucide-react';
 import Image from 'next/image';
@@ -34,6 +37,12 @@ export default function Home() {
 
     // Panel state (for World Map)
     const [panelState, setPanelState] = useState<PanelState>({ isOpen: false });
+
+    // Cluster panel state (for World Map clusters)
+    const [clusterPanelState, setClusterPanelState] = useState<ClusterPanelState>({
+        isOpen: false,
+        events: [],
+    });
 
     // Dependency Map state
     const [selectedMarketId, setSelectedMarketId] = useState<string | null>(null);
@@ -126,9 +135,26 @@ export default function Home() {
         setPanelState({ isOpen: true, eventId });
     };
 
-    // Close panel
+    // Handle cluster click from WorldMap
+    const handleClusterClick = (events: GeoEnrichedEvent[]) => {
+        setClusterPanelState({ isOpen: true, events });
+    };
+
+    // Close event panel
     const handleClosePanel = () => {
         setPanelState({ isOpen: false });
+    };
+
+    // Close cluster panel
+    const handleCloseClusterPanel = () => {
+        setClusterPanelState({ isOpen: false, events: [] });
+    };
+
+    // Handle event selection from cluster panel
+    const handleClusterEventSelect = (eventId: string) => {
+        // Close cluster panel and open event panel
+        setClusterPanelState({ isOpen: false, events: [] });
+        setPanelState({ isOpen: true, eventId });
     };
 
     // Get selected event for panel
@@ -253,15 +279,11 @@ export default function Home() {
                         )}
                     </div>
                 ) : activeTab === 'worldmap' ? (
-                    <div className="flex items-center justify-center h-full">
-                        <div className="flex flex-col items-center gap-4 text-center">
-                            <div className="text-6xl">🚧</div>
-                            <h2 className="text-2xl font-bold text-white">Under Construction</h2>
-                            <p className="text-zinc-400 max-w-md">
-                                The World Map feature is currently being improved. Please check back soon!
-                            </p>
-                        </div>
-                    </div>
+                    <WorldMap
+                        events={mappableEvents}
+                        onEventClick={handleWorldMapEventClick}
+                        onClusterClick={handleClusterClick}
+                    />
                 ) : activeTab === 'dependency' ? (
                     <DependencyMap
                         events={events}
@@ -360,6 +382,14 @@ export default function Home() {
                 event={selectedEvent || null}
                 isOpen={panelState.isOpen}
                 onClose={handleClosePanel}
+            />
+
+            {/* Cluster Panel (for WorldMap clusters) */}
+            <ClusterPanel
+                events={clusterPanelState.events}
+                isOpen={clusterPanelState.isOpen}
+                onClose={handleCloseClusterPanel}
+                onEventSelect={handleClusterEventSelect}
             />
         </main>
     );

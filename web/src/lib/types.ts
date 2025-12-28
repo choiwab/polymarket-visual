@@ -236,3 +236,24 @@ export interface PanelState {
     isOpen: boolean;
     eventId?: string;
 }
+
+export interface ClusterPanelState {
+    isOpen: boolean;
+    events: GeoEnrichedEvent[];
+}
+
+// ============================================
+// Cluster Marker Types (for WorldMap)
+// ============================================
+
+export interface ClusterMarker {
+    id: string; // "cluster-{lng},{lat}"
+    key: string; // "{lng},{lat}" for matching
+    coordinates: [number, number]; // [lng, lat]
+    events: GeoEnrichedEvent[];
+    size: number; // Pixel radius based on total volume
+    color: string; // Based on max heat
+    opacity: number; // Based on avg confidence
+    count: number; // Number of events
+    countryName?: string;
+}

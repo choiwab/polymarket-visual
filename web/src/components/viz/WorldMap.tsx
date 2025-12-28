@@ -1,6 +1,6 @@
 'use client';
 
-import React, {
+import {
     useRef,
     useEffect,
     useState,
@@ -8,7 +8,11 @@ import React, {
     useCallback,
 } from 'react';
 import * as d3 from 'd3';
-import { GeoEnrichedEvent } from '@/lib/types';
+import { GeoEnrichedEvent, ClusterMarker } from '@/lib/types';
+import {
+    groupEventsByLocation,
+    getExpandedPositions,
+} from '@/lib/markerClustering';
 
 // ============================================
 // Types
@@ -17,6 +21,7 @@ import { GeoEnrichedEvent } from '@/lib/types';
 interface WorldMapProps {
     events: GeoEnrichedEvent[];
     onEventClick: (eventId: string) => void;
+    onClusterClick: (events: GeoEnrichedEvent[]) => void;
     onEventHover?: (event: GeoEnrichedEvent | null) => void;
 }
 
@@ -30,21 +35,32 @@ interface EventMarker {
     event: GeoEnrichedEvent;
 }
 
+interface TooltipData {
+    type: 'event' | 'cluster';
+    event?: GeoEnrichedEvent;
+    cluster?: ClusterMarker;
+}
+
 // ============================================
 // Constants
 // ============================================
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
-
 const MAP_STYLE = 'mapbox://styles/mapbox/dark-v11';
-
 const INITIAL_VIEW = {
     center: [0, 20] as [number, number],
     zoom: 1.5,
 };
+const SIZE_RANGE = [8, 40]; // min/max radius in pixels
+const EXPANSION_RADIUS = 60; // Distance for expanded markers
+const MAX_EXPANDED_MARKERS = 6; // Max markers shown on hover
 
-// Size scale: volume -> pixel radius
-const SIZE_RANGE = [10, 50]; // min/max radius in pixels
+// Layer IDs
+const SINGLE_MARKERS_SOURCE = 'single-markers-source';
+const SINGLE_MARKERS_LAYER = 'single-markers-layer';
+const CLUSTER_MARKERS_SOURCE = 'cluster-markers-source';
+const CLUSTER_MARKERS_LAYER = 'cluster-markers-layer';
+const CLUSTER_COUNT_LAYER = 'cluster-count-layer';
 
 // ============================================
 // Color Scale (matches HeatMap)
@@ -63,56 +79,89 @@ const heatColorScale = (heat: number): string => {
 // ============================================
 
 interface TooltipProps {
-    event: GeoEnrichedEvent | null;
+    data: TooltipData | null;
     position: { x: number; y: number } | null;
 }
 
-function Tooltip({ event, position }: TooltipProps) {
-    if (!event || !position) return null;
+function Tooltip({ data, position }: TooltipProps) {
+    if (!data || !position) return null;
 
-    return (
-        <div
-            className="fixed z-[100] pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg shadow-xl p-3 max-w-xs"
-            style={{
-                left: position.x + 15,
-                top: position.y - 10,
-                transform: 'translateY(-50%)',
-            }}
-        >
-            <h4 className="text-sm font-semibold text-white line-clamp-2 mb-2">
-                {event.title}
-            </h4>
-            <div className="space-y-1 text-xs text-zinc-400">
-                <div className="flex justify-between gap-4">
-                    <span>Volume:</span>
-                    <span className="font-mono text-zinc-200">
-                        ${d3.format('.2s')(event.volumeTotal)}
-                    </span>
+    // Cluster tooltip
+    if (data.type === 'cluster' && data.cluster) {
+        const cluster = data.cluster;
+        return (
+            <div
+                className="fixed z-[100] pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg shadow-xl p-3 max-w-xs"
+                style={{
+                    left: position.x + 15,
+                    top: position.y - 10,
+                    transform: 'translateY(-50%)',
+                }}
+            >
+                <h4 className="text-sm font-semibold text-white mb-2">
+                    {cluster.count} Events in {cluster.countryName || 'this location'}
+                </h4>
+                <ul className="space-y-1 text-xs text-zinc-300 max-h-32 overflow-y-auto">
+                    {cluster.events.slice(0, 5).map((e) => (
+                        <li key={e.id} className="line-clamp-1 flex justify-between gap-2">
+                            <span className="truncate">{e.title}</span>
+                            <span className="text-zinc-500 flex-shrink-0">
+                                ${d3.format('.2s')(e.volumeTotal)}
+                            </span>
+                        </li>
+                    ))}
+                    {cluster.count > 5 && (
+                        <li className="text-zinc-500">+{cluster.count - 5} more...</li>
+                    )}
+                </ul>
+                <div className="mt-2 pt-2 border-t border-zinc-700 text-[10px] text-zinc-500">
+                    Hover to preview • Click to browse all
                 </div>
-                <div className="flex justify-between gap-4">
-                    <span>24h:</span>
-                    <span className="font-mono text-zinc-200">
-                        ${d3.format('.2s')(event.volume24h)}
-                    </span>
-                </div>
-                <div className="flex justify-between gap-4">
-                    <span>Markets:</span>
-                    <span className="text-zinc-200">{event.marketCount}</span>
-                </div>
-                {event.geoLocation.countryName && (
+            </div>
+        );
+    }
+
+    // Single event tooltip
+    if (data.type === 'event' && data.event) {
+        const event = data.event;
+        return (
+            <div
+                className="fixed z-[100] pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg shadow-xl p-3 max-w-xs"
+                style={{
+                    left: position.x + 15,
+                    top: position.y - 10,
+                    transform: 'translateY(-50%)',
+                }}
+            >
+                <h4 className="text-sm font-semibold text-white line-clamp-2 mb-2">
+                    {event.title}
+                </h4>
+                <div className="space-y-1 text-xs text-zinc-400">
                     <div className="flex justify-between gap-4">
-                        <span>Location:</span>
-                        <span className="text-zinc-200">
-                            {event.geoLocation.countryName}
+                        <span>Volume:</span>
+                        <span className="font-mono text-zinc-200">
+                            ${d3.format('.2s')(event.volumeTotal)}
                         </span>
                     </div>
-                )}
+                    <div className="flex justify-between gap-4">
+                        <span>24h:</span>
+                        <span className="font-mono text-zinc-200">
+                            ${d3.format('.2s')(event.volume24h)}
+                        </span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                        <span>Markets:</span>
+                        <span className="text-zinc-200">{event.marketCount}</span>
+                    </div>
+                </div>
+                <div className="mt-2 pt-2 border-t border-zinc-700 text-[10px] text-zinc-500">
+                    Click for details
+                </div>
             </div>
-            <div className="mt-2 pt-2 border-t border-zinc-700 text-[10px] text-zinc-500">
-                Click for details
-            </div>
-        </div>
-    );
+        );
+    }
+
+    return null;
 }
 
 // ============================================
@@ -122,34 +171,56 @@ function Tooltip({ event, position }: TooltipProps) {
 export default function WorldMap({
     events,
     onEventClick,
+    onClusterClick,
     onEventHover,
 }: WorldMapProps) {
     const mapContainer = useRef<HTMLDivElement>(null);
     const mapRef = useRef<mapboxgl.Map | null>(null);
-    const markersRef = useRef<mapboxgl.Marker[]>([]);
+    const expandedMarkersRef = useRef<HTMLDivElement[]>([]);
     const [mapLoaded, setMapLoaded] = useState(false);
     const [mapboxgl, setMapboxgl] = useState<typeof import('mapbox-gl') | null>(
         null
     );
-    const [hoveredEvent, setHoveredEvent] = useState<GeoEnrichedEvent | null>(
-        null
-    );
+    const [tooltipData, setTooltipData] = useState<TooltipData | null>(null);
     const [tooltipPosition, setTooltipPosition] = useState<{
         x: number;
         y: number;
     } | null>(null);
+    const [expandedClusterKey, setExpandedClusterKey] = useState<string | null>(
+        null
+    );
 
-    // Handle hover
-    const handleHover = useCallback(
-        (
-            event: GeoEnrichedEvent | null,
-            position?: { x: number; y: number }
-        ) => {
-            setHoveredEvent(event);
-            setTooltipPosition(position || null);
+    // Store marker data for click/hover lookups
+    const singleMarkersMapRef = useRef<Map<string, EventMarker>>(new Map());
+    const clusterMarkersMapRef = useRef<Map<string, ClusterMarker>>(new Map());
+
+    // Handle event hover
+    const handleEventHover = useCallback(
+        (event: GeoEnrichedEvent | null, position?: { x: number; y: number }) => {
+            if (event) {
+                setTooltipData({ type: 'event', event });
+                setTooltipPosition(position || null);
+            } else {
+                setTooltipData(null);
+                setTooltipPosition(null);
+            }
             onEventHover?.(event);
         },
         [onEventHover]
+    );
+
+    // Handle cluster hover
+    const handleClusterHover = useCallback(
+        (cluster: ClusterMarker | null, position?: { x: number; y: number }) => {
+            if (cluster) {
+                setTooltipData({ type: 'cluster', cluster });
+                setTooltipPosition(position || null);
+            } else {
+                setTooltipData(null);
+                setTooltipPosition(null);
+            }
+        },
+        []
     );
 
     // Dynamically import mapbox-gl (avoids SSR issues)
@@ -170,14 +241,6 @@ export default function WorldMap({
             return;
         }
 
-        // Debug: Check container dimensions
-        const rect = mapContainer.current.getBoundingClientRect();
-        console.log('Map container dimensions:', rect.width, 'x', rect.height);
-
-        if (rect.width === 0 || rect.height === 0) {
-            console.warn('Map container has zero dimensions');
-        }
-
         mapboxgl.default.accessToken = MAPBOX_TOKEN;
 
         const newMap = new mapboxgl.default.Map({
@@ -185,135 +248,503 @@ export default function WorldMap({
             style: MAP_STYLE,
             center: INITIAL_VIEW.center,
             zoom: INITIAL_VIEW.zoom,
-            projection: 'mercator',
+            projection: 'globe',
         });
 
         mapRef.current = newMap;
 
-        newMap.on('load', () => {
-            console.log('Mapbox map loaded successfully');
-            // Trigger resize to ensure proper rendering
-            setTimeout(() => {
-                newMap.resize();
-            }, 100);
+        newMap.on('style.load', () => {
+            // Add fog for atmosphere effect
+            newMap.setFog({
+                color: 'rgb(20, 20, 30)',
+                'high-color': 'rgb(30, 30, 50)',
+                'horizon-blend': 0.1,
+                'space-color': 'rgb(10, 10, 15)',
+                'star-intensity': 0.3,
+            });
+
             setMapLoaded(true);
         });
 
-        newMap.on('error', (e) => {
-            console.error('Mapbox error:', e);
-        });
-
-        // Add navigation controls
         newMap.addControl(new mapboxgl.default.NavigationControl(), 'top-right');
 
-        // Cleanup
         return () => {
             newMap.remove();
             mapRef.current = null;
         };
     }, [mapboxgl]);
 
-    // Transform events to markers
-    const markers = useMemo((): EventMarker[] => {
-        console.log('WorldMap received events:', events.length);
-        if (!events.length) return [];
+    // Group events into clusters and singles
+    const { clusterMarkers, singleMarkers } = useMemo(() => {
+        if (!events.length) return { clusterMarkers: [], singleMarkers: [] };
 
-        // Calculate size scale based on volume range
-        const volumes = events.map((e) => e.volumeTotal);
-        const volumeExtent = d3.extent(volumes) as [number, number];
-        const sizeScale = d3
-            .scaleSqrt()
-            .domain(volumeExtent)
-            .range(SIZE_RANGE);
+        const { groups, singleEvents } = groupEventsByLocation(events);
 
-        const result = events.map(
-            (event): EventMarker => ({
-                id: event.id,
-                coordinates: [
-                    event.geoLocation.coordinates.lng,
-                    event.geoLocation.coordinates.lat,
-                ],
-                size: sizeScale(event.volumeTotal),
-                color: heatColorScale(event.volumeHeat),
-                opacity: 0.4 + event.geoLocation.confidence * 0.6, // 0.4 to 1.0
-                isPulsing: event.volumeHeat > 0.7,
-                event,
-            })
-        );
-        console.log('WorldMap created markers:', result.length);
-        return result;
+        // Calculate size scale based on ALL volumes
+        const allVolumes = [
+            ...groups.map((g) => g.totalVolume),
+            ...singleEvents.map((e) => e.volumeTotal),
+        ];
+        const volumeExtent = d3.extent(allVolumes) as [number, number];
+        const sizeScale = d3.scaleSqrt().domain(volumeExtent).range(SIZE_RANGE);
+
+        // Create cluster markers
+        const clusterMarkers: ClusterMarker[] = groups.map((group) => ({
+            id: `cluster-${group.key}`,
+            key: group.key,
+            coordinates: group.coordinates,
+            events: group.events,
+            size: sizeScale(group.totalVolume),
+            color: heatColorScale(group.maxHeat),
+            opacity: 0.4 + group.avgConfidence * 0.6,
+            count: group.events.length,
+            countryName: group.countryName,
+        }));
+
+        // Create single event markers
+        const singleMarkers: EventMarker[] = singleEvents.map((event) => ({
+            id: event.id,
+            coordinates: [
+                event.geoLocation.coordinates.lng,
+                event.geoLocation.coordinates.lat,
+            ],
+            size: sizeScale(event.volumeTotal),
+            color: heatColorScale(event.volumeHeat),
+            opacity: 0.4 + event.geoLocation.confidence * 0.6,
+            isPulsing: event.volumeHeat > 0.7,
+            event,
+        }));
+
+        return { clusterMarkers, singleMarkers };
     }, [events]);
 
-    // Render markers when map is loaded or markers change
-    useEffect(() => {
-        if (!mapRef.current || !mapLoaded || !mapboxgl) return;
-
-        // Clear existing markers
-        markersRef.current.forEach((m) => m.remove());
-        markersRef.current = [];
-
-        // Add new markers
-        markers.forEach((marker) => {
-            const el = document.createElement('div');
-            el.className = 'world-map-marker';
-            el.style.cssText = `
-                width: ${marker.size * 2}px;
-                height: ${marker.size * 2}px;
-                background-color: ${marker.color};
-                opacity: ${marker.opacity};
-                border-radius: 50%;
-                cursor: pointer;
-                border: 2px solid rgba(255, 255, 255, 0.3);
-                transition: transform 0.2s, box-shadow 0.2s;
-                ${marker.isPulsing ? 'animation: worldMapPulse 2s infinite;' : ''}
-            `;
-
-            // Hover effects
-            el.addEventListener('mouseenter', (e) => {
-                el.style.transform = 'scale(1.2)';
-                el.style.boxShadow = '0 0 20px rgba(255, 255, 255, 0.5)';
-                el.style.zIndex = '100';
-                handleHover(marker.event, {
-                    x: (e as MouseEvent).clientX,
-                    y: (e as MouseEvent).clientY,
-                });
-            });
-
-            el.addEventListener('mousemove', (e) => {
-                setTooltipPosition({
-                    x: (e as MouseEvent).clientX,
-                    y: (e as MouseEvent).clientY,
-                });
-            });
-
-            el.addEventListener('mouseleave', () => {
-                el.style.transform = 'scale(1)';
-                el.style.boxShadow = 'none';
-                el.style.zIndex = '1';
-                handleHover(null);
-            });
-
-            // Click handler
-            el.addEventListener('click', () => {
-                onEventClick(marker.id);
-            });
-
-            const mapboxMarker = new mapboxgl.default.Marker({ element: el })
-                .setLngLat(marker.coordinates)
-                .addTo(mapRef.current!);
-
-            markersRef.current.push(mapboxMarker);
+    // Clear expanded markers
+    const clearExpandedMarkers = useCallback(() => {
+        expandedMarkersRef.current.forEach((el) => {
+            el.style.opacity = '0';
+            el.style.transform = 'scale(0)';
+            setTimeout(() => el.remove(), 200);
         });
-    }, [markers, mapLoaded, mapboxgl, onEventClick, handleHover]);
+        expandedMarkersRef.current = [];
+        setExpandedClusterKey(null);
+    }, []);
+
+    // Create expanded markers for a cluster (using screen coordinates)
+    const expandCluster = useCallback(
+        (cluster: ClusterMarker, screenPoint: { x: number; y: number }) => {
+            if (!mapRef.current || expandedClusterKey === cluster.key) return;
+
+            clearExpandedMarkers();
+            setExpandedClusterKey(cluster.key);
+
+            const positions = getExpandedPositions(
+                cluster.events,
+                EXPANSION_RADIUS,
+                MAX_EXPANDED_MARKERS
+            );
+
+            positions.forEach((pos, index) => {
+                const el = document.createElement('div');
+                el.className = 'expanded-marker';
+                el.style.cssText = `
+                    position: fixed;
+                    width: 24px;
+                    height: 24px;
+                    background-color: ${heatColorScale(pos.event.volumeHeat)};
+                    border: 2px solid white;
+                    border-radius: 50%;
+                    cursor: pointer;
+                    z-index: 200;
+                    opacity: 0;
+                    transform: scale(0);
+                    transition: all 0.2s ease-out;
+                    transition-delay: ${index * 30}ms;
+                    pointer-events: auto;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+                `;
+
+                // Position relative to screen point
+                const centerX = screenPoint.x - 12;
+                const centerY = screenPoint.y - 12;
+                el.style.left = `${centerX + pos.offset.x}px`;
+                el.style.top = `${centerY + pos.offset.y}px`;
+
+                // Hover effects
+                el.addEventListener('mouseenter', (e) => {
+                    el.style.transform = 'scale(1.3)';
+                    el.style.zIndex = '250';
+                    handleEventHover(pos.event, {
+                        x: (e as MouseEvent).clientX,
+                        y: (e as MouseEvent).clientY,
+                    });
+                });
+
+                el.addEventListener('mousemove', (e) => {
+                    setTooltipPosition({
+                        x: (e as MouseEvent).clientX,
+                        y: (e as MouseEvent).clientY,
+                    });
+                });
+
+                el.addEventListener('mouseleave', () => {
+                    el.style.transform = 'scale(1)';
+                    el.style.zIndex = '200';
+                    handleEventHover(null);
+                });
+
+                // Click handler
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    setTooltipData(null);
+                    setTooltipPosition(null);
+                    onEventClick(pos.event.id);
+                });
+
+                document.body.appendChild(el);
+                expandedMarkersRef.current.push(el);
+
+                // Trigger animation
+                requestAnimationFrame(() => {
+                    el.style.opacity = '1';
+                    el.style.transform = 'scale(1)';
+                });
+            });
+
+            // Add "+N more" indicator if needed
+            if (cluster.events.length > MAX_EXPANDED_MARKERS) {
+                const moreEl = document.createElement('div');
+                moreEl.className = 'more-indicator';
+                moreEl.style.cssText = `
+                    position: fixed;
+                    background: rgba(0,0,0,0.8);
+                    color: white;
+                    font-size: 10px;
+                    padding: 2px 6px;
+                    border-radius: 10px;
+                    z-index: 200;
+                    opacity: 0;
+                    transition: opacity 0.2s;
+                    pointer-events: none;
+                `;
+                moreEl.textContent = `+${cluster.events.length - MAX_EXPANDED_MARKERS}`;
+
+                moreEl.style.left = `${screenPoint.x}px`;
+                moreEl.style.top = `${screenPoint.y + 40}px`;
+                moreEl.style.transform = 'translateX(-50%)';
+
+                document.body.appendChild(moreEl);
+                expandedMarkersRef.current.push(moreEl);
+
+                requestAnimationFrame(() => {
+                    moreEl.style.opacity = '1';
+                });
+            }
+        },
+        [
+            expandedClusterKey,
+            clearExpandedMarkers,
+            handleEventHover,
+            onEventClick,
+        ]
+    );
+
+    // Update map layers with marker data
+    useEffect(() => {
+        if (!mapRef.current || !mapLoaded) return;
+
+        const map = mapRef.current;
+
+        // Update lookup maps
+        singleMarkersMapRef.current.clear();
+        singleMarkers.forEach((m) => singleMarkersMapRef.current.set(m.id, m));
+
+        clusterMarkersMapRef.current.clear();
+        clusterMarkers.forEach((c) => clusterMarkersMapRef.current.set(c.id, c));
+
+        // Create GeoJSON for single markers
+        const singleMarkersGeoJSON: GeoJSON.FeatureCollection = {
+            type: 'FeatureCollection',
+            features: singleMarkers.map((marker) => ({
+                type: 'Feature',
+                geometry: {
+                    type: 'Point',
+                    coordinates: marker.coordinates,
+                },
+                properties: {
+                    id: marker.id,
+                    size: marker.size,
+                    color: marker.color,
+                    opacity: marker.opacity,
+                    isPulsing: marker.isPulsing,
+                },
+            })),
+        };
+
+        // Create GeoJSON for cluster markers
+        const clusterMarkersGeoJSON: GeoJSON.FeatureCollection = {
+            type: 'FeatureCollection',
+            features: clusterMarkers.map((cluster) => ({
+                type: 'Feature',
+                geometry: {
+                    type: 'Point',
+                    coordinates: cluster.coordinates,
+                },
+                properties: {
+                    id: cluster.id,
+                    size: cluster.size,
+                    color: cluster.color,
+                    opacity: cluster.opacity,
+                    count: cluster.count,
+                },
+            })),
+        };
+
+        // Add or update single markers source and layer
+        if (map.getSource(SINGLE_MARKERS_SOURCE)) {
+            (map.getSource(SINGLE_MARKERS_SOURCE) as mapboxgl.GeoJSONSource).setData(
+                singleMarkersGeoJSON
+            );
+        } else {
+            map.addSource(SINGLE_MARKERS_SOURCE, {
+                type: 'geojson',
+                data: singleMarkersGeoJSON,
+            });
+
+            map.addLayer({
+                id: SINGLE_MARKERS_LAYER,
+                type: 'circle',
+                source: SINGLE_MARKERS_SOURCE,
+                paint: {
+                    'circle-radius': ['get', 'size'],
+                    'circle-color': ['get', 'color'],
+                    'circle-opacity': ['get', 'opacity'],
+                    'circle-stroke-width': 2,
+                    'circle-stroke-color': 'rgba(255, 255, 255, 0.3)',
+                },
+            });
+        }
+
+        // Add or update cluster markers source and layer
+        if (map.getSource(CLUSTER_MARKERS_SOURCE)) {
+            (map.getSource(CLUSTER_MARKERS_SOURCE) as mapboxgl.GeoJSONSource).setData(
+                clusterMarkersGeoJSON
+            );
+        } else {
+            map.addSource(CLUSTER_MARKERS_SOURCE, {
+                type: 'geojson',
+                data: clusterMarkersGeoJSON,
+            });
+
+            map.addLayer({
+                id: CLUSTER_MARKERS_LAYER,
+                type: 'circle',
+                source: CLUSTER_MARKERS_SOURCE,
+                paint: {
+                    'circle-radius': ['get', 'size'],
+                    'circle-color': ['get', 'color'],
+                    'circle-opacity': ['get', 'opacity'],
+                    'circle-stroke-width': 3,
+                    'circle-stroke-color': 'rgba(255, 255, 255, 0.5)',
+                },
+            });
+
+            // Add count labels for clusters
+            map.addLayer({
+                id: CLUSTER_COUNT_LAYER,
+                type: 'symbol',
+                source: CLUSTER_MARKERS_SOURCE,
+                layout: {
+                    'text-field': ['get', 'count'],
+                    'text-size': 12,
+                    'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'],
+                    'text-offset': [0.6, -0.6],
+                    'text-anchor': 'bottom-left',
+                },
+                paint: {
+                    'text-color': '#ffffff',
+                    'text-halo-color': '#3b82f6',
+                    'text-halo-width': 6,
+                },
+            });
+        }
+    }, [mapLoaded, singleMarkers, clusterMarkers]);
+
+    // Set up event handlers for layers
+    useEffect(() => {
+        if (!mapRef.current || !mapLoaded) return;
+
+        const map = mapRef.current;
+        let hoverTimeout: NodeJS.Timeout | null = null;
+
+        // Single marker click
+        const handleSingleClick = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
+            if (e.features && e.features.length > 0) {
+                const id = e.features[0].properties?.id;
+                if (id) {
+                    setTooltipData(null);
+                    setTooltipPosition(null);
+                    onEventClick(id);
+                }
+            }
+        };
+
+        // Single marker hover
+        const handleSingleMouseEnter = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
+            map.getCanvas().style.cursor = 'pointer';
+            if (e.features && e.features.length > 0) {
+                const id = e.features[0].properties?.id;
+                const marker = singleMarkersMapRef.current.get(id);
+                if (marker) {
+                    handleEventHover(marker.event, { x: e.point.x, y: e.point.y });
+                }
+            }
+        };
+
+        const handleSingleMouseLeave = () => {
+            map.getCanvas().style.cursor = '';
+            handleEventHover(null);
+        };
+
+        const handleSingleMouseMove = (e: mapboxgl.MapMouseEvent) => {
+            setTooltipPosition({ x: e.point.x, y: e.point.y });
+        };
+
+        // Cluster marker click
+        const handleClusterClick = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
+            if (e.features && e.features.length > 0) {
+                const id = e.features[0].properties?.id;
+                const cluster = clusterMarkersMapRef.current.get(id);
+                if (cluster) {
+                    setTooltipData(null);
+                    setTooltipPosition(null);
+                    clearExpandedMarkers();
+                    onClusterClick(cluster.events);
+                }
+            }
+        };
+
+        // Cluster marker hover
+        const handleClusterMouseEnter = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
+            map.getCanvas().style.cursor = 'pointer';
+            if (e.features && e.features.length > 0) {
+                const id = e.features[0].properties?.id;
+                const cluster = clusterMarkersMapRef.current.get(id);
+                if (cluster) {
+                    handleClusterHover(cluster, { x: e.point.x, y: e.point.y });
+
+                    // Delay expansion
+                    hoverTimeout = setTimeout(() => {
+                        const rect = mapContainer.current?.getBoundingClientRect();
+                        if (rect) {
+                            expandCluster(cluster, {
+                                x: e.point.x + rect.left,
+                                y: e.point.y + rect.top,
+                            });
+                        }
+                    }, 300);
+                }
+            }
+        };
+
+        const handleClusterMouseLeave = () => {
+            if (hoverTimeout) {
+                clearTimeout(hoverTimeout);
+                hoverTimeout = null;
+            }
+            map.getCanvas().style.cursor = '';
+            handleClusterHover(null);
+            // Don't immediately clear expanded markers - let the mousemove handler decide
+        };
+
+        const handleClusterMouseMove = (e: mapboxgl.MapMouseEvent) => {
+            setTooltipPosition({ x: e.point.x, y: e.point.y });
+        };
+
+        // Clear expanded markers on map interaction
+        const handleInteractionStart = () => {
+            if (expandedMarkersRef.current.length > 0) {
+                expandedMarkersRef.current.forEach((el) => el.remove());
+                expandedMarkersRef.current = [];
+                setExpandedClusterKey(null);
+                setTooltipData(null);
+                setTooltipPosition(null);
+            }
+        };
+
+        // Global mouse move to clean up expanded markers
+        const handleDocumentMouseMove = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            if (
+                expandedClusterKey &&
+                !target.classList.contains('expanded-marker') &&
+                !target.classList.contains('more-indicator') &&
+                !mapContainer.current?.contains(target)
+            ) {
+                clearExpandedMarkers();
+            }
+        };
+
+        // Register event handlers
+        map.on('click', SINGLE_MARKERS_LAYER, handleSingleClick);
+        map.on('mouseenter', SINGLE_MARKERS_LAYER, handleSingleMouseEnter);
+        map.on('mouseleave', SINGLE_MARKERS_LAYER, handleSingleMouseLeave);
+        map.on('mousemove', SINGLE_MARKERS_LAYER, handleSingleMouseMove);
+
+        map.on('click', CLUSTER_MARKERS_LAYER, handleClusterClick);
+        map.on('mouseenter', CLUSTER_MARKERS_LAYER, handleClusterMouseEnter);
+        map.on('mouseleave', CLUSTER_MARKERS_LAYER, handleClusterMouseLeave);
+        map.on('mousemove', CLUSTER_MARKERS_LAYER, handleClusterMouseMove);
+
+        map.on('movestart', handleInteractionStart);
+        map.on('zoomstart', handleInteractionStart);
+        map.on('rotatestart', handleInteractionStart);
+        map.on('pitchstart', handleInteractionStart);
+        map.on('dragstart', handleInteractionStart);
+        map.on('wheel', handleInteractionStart);
+
+        document.addEventListener('mousemove', handleDocumentMouseMove);
+
+        return () => {
+            map.off('click', SINGLE_MARKERS_LAYER, handleSingleClick);
+            map.off('mouseenter', SINGLE_MARKERS_LAYER, handleSingleMouseEnter);
+            map.off('mouseleave', SINGLE_MARKERS_LAYER, handleSingleMouseLeave);
+            map.off('mousemove', SINGLE_MARKERS_LAYER, handleSingleMouseMove);
+
+            map.off('click', CLUSTER_MARKERS_LAYER, handleClusterClick);
+            map.off('mouseenter', CLUSTER_MARKERS_LAYER, handleClusterMouseEnter);
+            map.off('mouseleave', CLUSTER_MARKERS_LAYER, handleClusterMouseLeave);
+            map.off('mousemove', CLUSTER_MARKERS_LAYER, handleClusterMouseMove);
+
+            map.off('movestart', handleInteractionStart);
+            map.off('zoomstart', handleInteractionStart);
+            map.off('rotatestart', handleInteractionStart);
+            map.off('pitchstart', handleInteractionStart);
+            map.off('dragstart', handleInteractionStart);
+            map.off('wheel', handleInteractionStart);
+
+            document.removeEventListener('mousemove', handleDocumentMouseMove);
+
+            if (hoverTimeout) {
+                clearTimeout(hoverTimeout);
+            }
+        };
+    }, [
+        mapLoaded,
+        onEventClick,
+        onClusterClick,
+        handleEventHover,
+        handleClusterHover,
+        expandCluster,
+        clearExpandedMarkers,
+        expandedClusterKey,
+    ]);
 
     // Show placeholder if no token
     if (!MAPBOX_TOKEN) {
         return (
             <div className="relative w-full h-full bg-zinc-900 flex items-center justify-center">
                 <div className="text-center text-zinc-400 p-8">
-                    <p className="text-lg font-medium mb-2">
-                        Mapbox Token Required
-                    </p>
+                    <p className="text-lg font-medium mb-2">Mapbox Token Required</p>
                     <p className="text-sm">
                         Add NEXT_PUBLIC_MAPBOX_TOKEN to your .env.local file
                     </p>
@@ -345,6 +776,9 @@ export default function WorldMap({
         );
     }
 
+    const totalEvents = singleMarkers.length + clusterMarkers.reduce((sum, c) => sum + c.count, 0);
+    const clusterCount = clusterMarkers.length;
+
     return (
         <div className="relative w-full h-full" style={{ minHeight: '400px' }}>
             <div
@@ -354,28 +788,20 @@ export default function WorldMap({
             />
 
             {/* Tooltip */}
-            <Tooltip event={hoveredEvent} position={tooltipPosition} />
+            <Tooltip data={tooltipData} position={tooltipPosition} />
 
-            {/* Event count badge */}
+            {/* Stats badge */}
             <div className="absolute bottom-4 left-4 bg-zinc-900/90 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-400 z-10">
-                <span className="text-white font-medium">{events.length}</span>{' '}
-                events on map
+                <span className="text-white font-medium">{totalEvents}</span> events
+                {clusterCount > 0 && (
+                    <span className="ml-2">
+                        (<span className="text-blue-400">{clusterCount}</span> clusters)
+                    </span>
+                )}
             </div>
 
-            {/* Pulse animation styles */}
+            {/* Styles */}
             <style jsx global>{`
-                @keyframes worldMapPulse {
-                    0% {
-                        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
-                    }
-                    70% {
-                        box-shadow: 0 0 0 15px rgba(239, 68, 68, 0);
-                    }
-                    100% {
-                        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
-                    }
-                }
-
                 .mapboxgl-map {
                     width: 100% !important;
                     height: 100% !important;

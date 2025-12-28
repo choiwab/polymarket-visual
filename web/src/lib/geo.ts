@@ -383,10 +383,12 @@ export function inferEventLocation(event: ProcessedEvent): GeoInferenceResult {
     const text = `${title} ${description}`;
 
     // Tier 1: Institution matching (highest confidence: 0.9)
+    // Use word boundary matching to avoid false positives (e.g., "un" matching in "under")
     for (const [institution, countryCode] of Object.entries(
         INSTITUTION_LOCATION_MAP
     )) {
-        if (text.includes(institution)) {
+        const regex = new RegExp(`\\b${institution}\\b`, 'i');
+        if (regex.test(text)) {
             const country = COUNTRY_CENTROIDS[countryCode];
             if (country) {
                 return {
@@ -396,7 +398,7 @@ export function inferEventLocation(event: ProcessedEvent): GeoInferenceResult {
                         country: countryCode,
                         countryName: country.name,
                         confidence: 0.9,
-                        source: title.includes(institution)
+                        source: regex.test(title)
                             ? 'title'
                             : 'institution',
                     },
@@ -406,14 +408,16 @@ export function inferEventLocation(event: ProcessedEvent): GeoInferenceResult {
     }
 
     // Tier 2: Country keyword matching (confidence: 0.5-0.85)
+    // Use word boundary matching to avoid false positives
     let bestMatch: { code: string; score: number } | null = null;
 
     for (const [countryCode, keywords] of Object.entries(COUNTRY_KEYWORDS)) {
         let score = 0;
         for (const keyword of keywords) {
-            if (text.includes(keyword)) {
+            const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+            if (regex.test(text)) {
                 // Title matches weighted higher
-                score += title.includes(keyword) ? 2 : 1;
+                score += regex.test(title) ? 2 : 1;
             }
         }
         if (score > 0 && (!bestMatch || score > bestMatch.score)) {
