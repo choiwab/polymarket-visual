@@ -177,7 +177,7 @@ export default function DependencyMap({
                         <div className="flex flex-col gap-2">
                             <div className="flex items-center gap-2">
                                 <div className="w-3 h-3 rounded-full bg-zinc-500" />
-                                <span className="text-zinc-400">Structural (same event)</span>
+                                <span className="text-zinc-400">Same event</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <div className="w-3 h-3 rounded-full bg-green-500" />
@@ -187,9 +187,17 @@ export default function DependencyMap({
                                 <div className="w-3 h-3 rounded-full bg-red-500" />
                                 <span className="text-zinc-400">Negative correlation</span>
                             </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-blue-500" />
+                                <span className="text-zinc-400">Shared entity</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-purple-500" />
+                                <span className="text-zinc-400">Similar timing</span>
+                            </div>
                             <div className="flex items-center gap-2 pt-1 border-t border-zinc-700">
                                 <div className="w-4 h-0.5 bg-zinc-400" style={{ borderStyle: 'dashed' }} />
-                                <span className="text-zinc-500">Dashed = structural</span>
+                                <span className="text-zinc-500">Dashed = structural/temporal</span>
                             </div>
                         </div>
                     </div>

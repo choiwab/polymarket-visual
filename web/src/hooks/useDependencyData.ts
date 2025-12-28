@@ -15,6 +15,8 @@ import {
     buildCorrelationEdges,
     computeVolatility,
 } from '@/lib/correlation';
+import { extractEntities, findEntityBasedDependencies } from '@/lib/entities';
+import { findTemporalDependencies } from '@/lib/temporal';
 import { CATEGORIES } from '@/lib/categories';
 
 interface UseDependencyDataResult {
@@ -26,6 +28,8 @@ interface UseDependencyDataResult {
         totalEdges: number;
         structuralEdges: number;
         correlationEdges: number;
+        entityEdges: number;
+        temporalEdges: number;
     };
 }
 
@@ -134,8 +138,15 @@ export function useDependencyData(
     const graph = useMemo((): DependencyGraph | null => {
         if (!centerMarketId || !centerMarket) return null;
 
-        const edges: DependencyEdge[] = [];
+        // Use a map to deduplicate edges between the same pair of markets
+        // Key: "sourceId-targetId" (normalized so smaller ID comes first)
+        const edgeMap = new Map<string, DependencyEdge>();
         const nodeMap = new Map<string, DependencyNode>();
+
+        // Helper to get normalized edge key (ensures A-B and B-A are the same)
+        const getEdgePairKey = (sourceId: string, targetId: string) => {
+            return sourceId < targetId ? `${sourceId}-${targetId}` : `${targetId}-${sourceId}`;
+        };
 
         // Always add center node
         nodeMap.set(centerMarketId, marketToNode(centerMarket, centerEvent, histories));
@@ -150,7 +161,14 @@ export function useDependencyData(
                     continue;
                 }
 
-                edges.push(edge);
+                const pairKey = getEdgePairKey(edge.sourceId, edge.targetId);
+                // Only add if no edge exists yet for this pair
+                if (!edgeMap.has(pairKey)) {
+                    edgeMap.set(pairKey, {
+                        ...edge,
+                        id: `structural-${pairKey}`, // Unique ID with type prefix
+                    });
+                }
 
                 // Add the target node if not already present
                 if (!nodeMap.has(edge.targetId)) {
@@ -186,7 +204,12 @@ export function useDependencyData(
                     continue;
                 }
 
-                edges.push(edge);
+                const pairKey = getEdgePairKey(edge.sourceId, edge.targetId);
+                // Correlation edges override structural edges (more informative)
+                edgeMap.set(pairKey, {
+                    ...edge,
+                    id: `correlation-${pairKey}`, // Unique ID with type prefix
+                });
 
                 // Add the target node if not already present
                 if (!nodeMap.has(edge.targetId)) {
@@ -198,8 +221,90 @@ export function useDependencyData(
             }
         }
 
-        // Limit total edges
-        const limitedEdges = edges
+        // Find entity-based dependencies (shared named entities)
+        if (filters.dependencyType === 'all' || filters.dependencyType === 'entity') {
+            // Extract entities from center market and its event
+            const centerEntities = extractEntities(centerMarket.question);
+            if (centerEvent) {
+                centerEntities.push(...extractEntities(centerEvent.title));
+            }
+
+            if (centerEntities.length > 0) {
+                const entityEdges = findEntityBasedDependencies(
+                    centerMarketId,
+                    centerEntities,
+                    allMarkets,
+                    events,
+                    { minSharedEntities: filters.minSharedEntities || 1 }
+                );
+
+                for (const edge of entityEdges) {
+                    // Check cross-event filter
+                    const targetMarket = allMarkets.find((m) => m.id === edge.targetId);
+                    if (!filters.showCrossEvent && targetMarket?.eventId === centerEvent?.id) {
+                        // Skip same-event markets for entity edges (structural already covers them)
+                        continue;
+                    }
+
+                    const pairKey = getEdgePairKey(edge.sourceId, edge.targetId);
+                    // Only add if no edge exists yet (don't override structural/correlation)
+                    if (!edgeMap.has(pairKey)) {
+                        edgeMap.set(pairKey, {
+                            ...edge,
+                            id: `entity-${pairKey}`,
+                        });
+
+                        // Add the target node if not already present
+                        if (!nodeMap.has(edge.targetId) && targetMarket) {
+                            const targetEvent = events.find((e) => e.id === targetMarket.eventId);
+                            nodeMap.set(edge.targetId, marketToNode(targetMarket, targetEvent, histories));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Find temporal dependencies (overlapping resolution windows)
+        if (filters.dependencyType === 'all' || filters.dependencyType === 'temporal') {
+            const centerEndDate = centerMarket.endDate || centerEvent?.endDate;
+
+            if (centerEndDate) {
+                const temporalEdges = findTemporalDependencies(
+                    centerMarketId,
+                    centerEndDate,
+                    allMarkets,
+                    events,
+                    { maxDaysDiff: filters.maxDaysDiff || 14 }
+                );
+
+                for (const edge of temporalEdges) {
+                    // Check cross-event filter
+                    const targetMarket = allMarkets.find((m) => m.id === edge.targetId);
+                    if (!filters.showCrossEvent && targetMarket?.eventId === centerEvent?.id) {
+                        // Skip same-event markets for temporal edges
+                        continue;
+                    }
+
+                    const pairKey = getEdgePairKey(edge.sourceId, edge.targetId);
+                    // Only add if no edge exists yet (don't override other types)
+                    if (!edgeMap.has(pairKey)) {
+                        edgeMap.set(pairKey, {
+                            ...edge,
+                            id: `temporal-${pairKey}`,
+                        });
+
+                        // Add the target node if not already present
+                        if (!nodeMap.has(edge.targetId) && targetMarket) {
+                            const targetEvent = events.find((e) => e.id === targetMarket.eventId);
+                            nodeMap.set(edge.targetId, marketToNode(targetMarket, targetEvent, histories));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Convert edge map to array and limit total edges
+        const limitedEdges = Array.from(edgeMap.values())
             .sort((a, b) => b.weight - a.weight)
             .slice(0, filters.maxEdges);
 
@@ -239,7 +344,14 @@ export function useDependencyData(
     // Compute stats
     const stats = useMemo(() => {
         if (!graph) {
-            return { totalNodes: 0, totalEdges: 0, structuralEdges: 0, correlationEdges: 0 };
+            return {
+                totalNodes: 0,
+                totalEdges: 0,
+                structuralEdges: 0,
+                correlationEdges: 0,
+                entityEdges: 0,
+                temporalEdges: 0,
+            };
         }
 
         return {
@@ -247,6 +359,8 @@ export function useDependencyData(
             totalEdges: graph.edges.length,
             structuralEdges: graph.edges.filter((e) => e.type === 'structural').length,
             correlationEdges: graph.edges.filter((e) => e.type === 'correlation').length,
+            entityEdges: graph.edges.filter((e) => e.type === 'entity').length,
+            temporalEdges: graph.edges.filter((e) => e.type === 'temporal').length,
         };
     }, [graph]);
 

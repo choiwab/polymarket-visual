@@ -42,7 +42,9 @@ export default function Home() {
         timeWindow: '24h',
         dependencyType: 'all',
         showCrossEvent: true,
-        maxEdges: 5,
+        maxEdges: 10,
+        minSharedEntities: 1,
+        maxDaysDiff: 14,
     });
 
     // Data hooks

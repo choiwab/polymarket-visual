@@ -99,6 +99,7 @@ function parseMarketFromEvent(market: Record<string, unknown>, eventId: string):
             image: (market.image as string) || (market.icon as string),
             liquidity: Number(market.liquidity || 0),
             endTime: market.endDate as string,
+            endDate: market.endDate as string,
             clobTokenIds,
         };
     } catch {
