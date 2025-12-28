@@ -134,8 +134,15 @@ export function useDependencyData(
     const graph = useMemo((): DependencyGraph | null => {
         if (!centerMarketId || !centerMarket) return null;
 
-        const edges: DependencyEdge[] = [];
+        // Use a map to deduplicate edges between the same pair of markets
+        // Key: "sourceId-targetId" (normalized so smaller ID comes first)
+        const edgeMap = new Map<string, DependencyEdge>();
         const nodeMap = new Map<string, DependencyNode>();
+
+        // Helper to get normalized edge key (ensures A-B and B-A are the same)
+        const getEdgePairKey = (sourceId: string, targetId: string) => {
+            return sourceId < targetId ? `${sourceId}-${targetId}` : `${targetId}-${sourceId}`;
+        };
 
         // Always add center node
         nodeMap.set(centerMarketId, marketToNode(centerMarket, centerEvent, histories));
@@ -150,7 +157,14 @@ export function useDependencyData(
                     continue;
                 }
 
-                edges.push(edge);
+                const pairKey = getEdgePairKey(edge.sourceId, edge.targetId);
+                // Only add if no edge exists yet for this pair
+                if (!edgeMap.has(pairKey)) {
+                    edgeMap.set(pairKey, {
+                        ...edge,
+                        id: `structural-${pairKey}`, // Unique ID with type prefix
+                    });
+                }
 
                 // Add the target node if not already present
                 if (!nodeMap.has(edge.targetId)) {
@@ -186,7 +200,12 @@ export function useDependencyData(
                     continue;
                 }
 
-                edges.push(edge);
+                const pairKey = getEdgePairKey(edge.sourceId, edge.targetId);
+                // Correlation edges override structural edges (more informative)
+                edgeMap.set(pairKey, {
+                    ...edge,
+                    id: `correlation-${pairKey}`, // Unique ID with type prefix
+                });
 
                 // Add the target node if not already present
                 if (!nodeMap.has(edge.targetId)) {
@@ -198,8 +217,8 @@ export function useDependencyData(
             }
         }
 
-        // Limit total edges
-        const limitedEdges = edges
+        // Convert edge map to array and limit total edges
+        const limitedEdges = Array.from(edgeMap.values())
             .sort((a, b) => b.weight - a.weight)
             .slice(0, filters.maxEdges);
 
