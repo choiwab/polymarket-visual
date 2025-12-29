@@ -52,7 +52,7 @@ const INITIAL_VIEW = {
     zoom: 1.5,
 };
 const SIZE_RANGE = [8, 40]; // min/max radius in pixels
-const EXPANSION_RADIUS = 40; // Distance for expanded markers
+const EXPANSION_RADIUS = 20; // Distance for expanded markers
 const MAX_EXPANDED_MARKERS = 6; // Max markers shown on hover
 
 // Layer IDs
