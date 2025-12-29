@@ -52,7 +52,7 @@ const INITIAL_VIEW = {
     zoom: 1.5,
 };
 const SIZE_RANGE = [8, 40]; // min/max radius in pixels
-const EXPANSION_RADIUS = 60; // Distance for expanded markers
+const EXPANSION_RADIUS = 40; // Distance for expanded markers
 const MAX_EXPANDED_MARKERS = 6; // Max markers shown on hover
 
 // Layer IDs
@@ -337,19 +337,25 @@ export default function WorldMap({
             clearExpandedMarkers();
             setExpandedClusterKey(cluster.key);
 
+            // Calculate expansion radius based on cluster size to avoid overlap
+            const effectiveRadius = Math.max(EXPANSION_RADIUS, cluster.size + 20);
+
             const positions = getExpandedPositions(
                 cluster.events,
-                EXPANSION_RADIUS,
+                effectiveRadius,
                 MAX_EXPANDED_MARKERS
             );
+
+            const MARKER_SIZE = 16;
+            const HALF_MARKER = MARKER_SIZE / 2;
 
             positions.forEach((pos, index) => {
                 const el = document.createElement('div');
                 el.className = 'expanded-marker';
                 el.style.cssText = `
                     position: fixed;
-                    width: 24px;
-                    height: 24px;
+                    width: ${MARKER_SIZE}px;
+                    height: ${MARKER_SIZE}px;
                     background-color: ${heatColorScale(pos.event.volumeHeat)};
                     border: 2px solid white;
                     border-radius: 50%;
@@ -363,11 +369,10 @@ export default function WorldMap({
                     box-shadow: 0 2px 8px rgba(0,0,0,0.4);
                 `;
 
-                // Position relative to screen point
-                const centerX = screenPoint.x - 12;
-                const centerY = screenPoint.y - 12;
-                el.style.left = `${centerX + pos.offset.x}px`;
-                el.style.top = `${centerY + pos.offset.y}px`;
+                // Position relative to screen point (center of cluster)
+                // Subtract half marker size to center the marker on its calculated position
+                el.style.left = `${screenPoint.x + pos.offset.x - HALF_MARKER}px`;
+                el.style.top = `${screenPoint.y + pos.offset.y - HALF_MARKER}px`;
 
                 // Hover effects
                 el.addEventListener('mouseenter', (e) => {
@@ -428,8 +433,9 @@ export default function WorldMap({
                 `;
                 moreEl.textContent = `+${cluster.events.length - MAX_EXPANDED_MARKERS}`;
 
+                // Position below the cluster, accounting for effective radius
                 moreEl.style.left = `${screenPoint.x}px`;
-                moreEl.style.top = `${screenPoint.y + 40}px`;
+                moreEl.style.top = `${screenPoint.y + effectiveRadius + 20}px`;
                 moreEl.style.transform = 'translateX(-50%)';
 
                 document.body.appendChild(moreEl);
@@ -636,9 +642,12 @@ export default function WorldMap({
                     hoverTimeout = setTimeout(() => {
                         const rect = mapContainer.current?.getBoundingClientRect();
                         if (rect) {
+                            // Project the cluster's actual coordinates to screen space
+                            // This ensures the expanded markers are centered on the cluster, not the mouse
+                            const projected = map.project(cluster.coordinates as [number, number]);
                             expandCluster(cluster, {
-                                x: e.point.x + rect.left,
-                                y: e.point.y + rect.top,
+                                x: projected.x + rect.left,
+                                y: projected.y + rect.top,
                             });
                         }
                     }, 300);
