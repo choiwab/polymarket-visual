@@ -380,11 +380,10 @@ export default function HeatMap({
     return (
         <div
             ref={containerRef}
-            className={`relative w-full h-full overflow-hidden bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl select-none ${
-                isZoomed
+            className={`relative w-full h-full overflow-hidden bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl select-none ${isZoomed
                     ? isDragging ? 'cursor-grabbing' : 'cursor-grab'
                     : ''
-            }`}
+                }`}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -413,34 +412,29 @@ export default function HeatMap({
                 const showFullProb = screenWidth > 10 && screenHeight > 8;
                 const showImage = screenWidth > 12 && screenHeight > 12 && !!node.image;
 
-                const Element = isMarketLevel ? 'a' : 'button';
-
-                const elementProps = isMarketLevel
-                    ? {
-                          href: `https://polymarket.com/event/${node.slug}`,
-                          target: '_blank' as const,
-                          rel: 'noopener noreferrer',
-                          onClick: (e: React.MouseEvent) => {
-                              if (dragDistance.current > 3) {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                              }
-                          },
-                      }
-                    : {
-                          onClick: (e: React.MouseEvent) =>
-                              handleClick(e, node, false),
-                      };
-
                 return (
-                    <Element
+                    <div
                         key={node.id}
-                        {...elementProps}
-                        className={`absolute ${
-                            !isZoomed
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e: React.MouseEvent) => {
+                            if (dragDistance.current > 3) return;
+                            handleClick(e, node, isMarketLevel);
+                        }}
+                        onKeyDown={(e: React.KeyboardEvent) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleClick(
+                                    e as unknown as React.MouseEvent,
+                                    node,
+                                    isMarketLevel
+                                );
+                            }
+                        }}
+                        className={`absolute ${!isZoomed
                                 ? 'transition-all duration-500 ease-in-out'
                                 : ''
-                        } hover:z-10 group cursor-pointer text-left`}
+                            } hover:z-10 group cursor-pointer text-left`}
                         style={{
                             left: `${screenLeft}%`,
                             top: `${screenTop}%`,
@@ -474,7 +468,7 @@ export default function HeatMap({
                                 <img
                                     src={node.image}
                                     alt=""
-                                    className="w-2/3 h-2/3 object-contain opacity-15 pointer-events-none"
+                                    className="w-2/3 h-2/3 object-contain opacity-50 pointer-events-none"
                                     loading="lazy"
                                 />
                             </div>
@@ -482,9 +476,8 @@ export default function HeatMap({
 
                         {/* Activity badge (market level) */}
                         {showText && isMarketLevel && node.volume24hrRatio !== undefined && node.volume24hrRatio > 0.08 && (
-                            <span className={`absolute top-1 right-1 z-[2] px-1 py-0.5 text-[7px] font-bold uppercase rounded text-white drop-shadow-md pointer-events-none ${
-                                node.volume24hrRatio > 0.15 ? 'bg-red-500/80' : 'bg-yellow-500/80'
-                            }`}>
+                            <span className={`absolute top-1 right-1 z-[2] px-1 py-0.5 text-[7px] font-bold uppercase rounded text-white drop-shadow-md pointer-events-none ${node.volume24hrRatio > 0.15 ? 'bg-red-500/80' : 'bg-yellow-500/80'
+                                }`}>
                                 {node.volume24hrRatio > 0.15 ? 'HOT' : 'ACTIVE'}
                             </span>
                         )}
@@ -501,7 +494,7 @@ export default function HeatMap({
                                     {/* Stats at bottom */}
                                     <div className="mt-auto flex items-end justify-between gap-1">
                                         {isMarketLevel &&
-                                        node.probability !== undefined ? (
+                                            node.probability !== undefined ? (
                                             <div className="flex items-center gap-1">
                                                 <span className="text-[10px] font-mono font-bold opacity-90 drop-shadow-md">
                                                     {Math.round(node.probability * 100)}%
@@ -523,8 +516,8 @@ export default function HeatMap({
                                                     {node.heat > 0.7
                                                         ? '\u{1F525}'
                                                         : node.heat > 0.4
-                                                        ? '\u26A1'
-                                                        : ''}
+                                                            ? '\u26A1'
+                                                            : ''}
                                                     {node.volume24h ? ` $${d3.format('.2s')(node.volume24h)}/24h` : ''}
                                                 </span>
                                             )
@@ -540,7 +533,7 @@ export default function HeatMap({
                                 </div>
                             )}
                         </div>
-                    </Element>
+                    </div>
                 );
             })}
 
