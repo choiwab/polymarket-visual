@@ -148,10 +148,11 @@ export default function HeatMap({
     const containerRef = useRef<HTMLDivElement>(null);
 
     // Drag state
-    const isDragging = useRef(false);
+    const isDraggingRef = useRef(false);
     const dragStart = useRef({ x: 0, y: 0 });
     const vpStart = useRef<Viewport>(DEFAULT_VIEWPORT);
     const dragDistance = useRef(0);
+    const [isDragging, setIsDragging] = useState(false);
 
     const applyViewport = useCallback((vp: Viewport) => {
         const clamped = clampViewport(vp);
@@ -218,15 +219,16 @@ export default function HeatMap({
         const vp = viewportRef.current;
         if (vp.x1 - vp.x0 >= 100) return; // Not zoomed
         if (e.button !== 0) return;
-        isDragging.current = true;
+        isDraggingRef.current = true;
         dragDistance.current = 0;
         dragStart.current = { x: e.clientX, y: e.clientY };
         vpStart.current = { ...vp };
+        setIsDragging(true);
     }, []);
 
     const handleMouseMove = useCallback(
         (e: React.MouseEvent) => {
-            if (!isDragging.current) return;
+            if (!isDraggingRef.current) return;
             const dx = e.clientX - dragStart.current.x;
             const dy = e.clientY - dragStart.current.y;
             dragDistance.current = Math.sqrt(dx * dx + dy * dy);
@@ -251,7 +253,20 @@ export default function HeatMap({
     );
 
     const handleMouseUp = useCallback(() => {
-        isDragging.current = false;
+        isDraggingRef.current = false;
+        setIsDragging(false);
+    }, []);
+
+    // Global mouseup to catch drag release outside container
+    useEffect(() => {
+        const handleGlobalMouseUp = () => {
+            if (isDraggingRef.current) {
+                isDraggingRef.current = false;
+                setIsDragging(false);
+            }
+        };
+        window.addEventListener('mouseup', handleGlobalMouseUp);
+        return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
     }, []);
 
     // Transform and filter data
@@ -337,7 +352,9 @@ export default function HeatMap({
         <div
             ref={containerRef}
             className={`relative w-full h-full overflow-hidden bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl select-none ${
-                isZoomed ? 'cursor-grab' : ''
+                isZoomed
+                    ? isDragging ? 'cursor-grabbing' : 'cursor-grab'
+                    : ''
             }`}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
@@ -358,7 +375,7 @@ export default function HeatMap({
                 const screenWidth = ((leaf.x1 - leaf.x0) / vpW) * 100;
                 const screenHeight = ((leaf.y1 - leaf.y0) / vpH) * 100;
 
-                // Skip tiny cells (less than ~2% of screen)
+                // Skip tiny cells (less than ~1% of screen)
                 if (screenWidth < 1 || screenHeight < 1) return null;
 
                 const color = getNodeColor(node);
@@ -454,7 +471,7 @@ export default function HeatMap({
 
             {/* Zoom indicator */}
             {isZoomed && (
-                <div className="absolute bottom-3 left-3 z-20 bg-zinc-900/90 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-400 flex items-center gap-2">
+                <div className="absolute bottom-3 left-3 z-20 bg-zinc-900/90 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-400 flex items-center gap-2 pointer-events-auto">
                     <span className="text-white font-mono">
                         {zoomLevel.toFixed(1)}x
                     </span>
