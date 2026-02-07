@@ -80,7 +80,7 @@ function transformToNodes(
                 value: market.volume,
                 heat: 0, // Not used for markets
                 probability: market.outcomeProb,
-                slug: market.slug,
+                slug: market.eventSlug || market.slug,
             }));
 
         default:

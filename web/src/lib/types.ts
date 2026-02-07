@@ -95,6 +95,7 @@ export interface MarketNode {
     outcomeProb: number; // Probability of "Yes" or highest outcome (0-1)
     group: string; // Category or Event title (legacy)
     slug: string;
+    eventSlug?: string;
     image?: string;
     liquidity?: number;
     endTime?: string;
@@ -201,6 +202,7 @@ export interface DependencyNode {
     categoryId: string;
     categoryName: string;
     slug: string;
+    eventSlug?: string;
     // Graph layout (mutable by d3-force)
     x?: number;
     y?: number;

@@ -44,6 +44,7 @@ export async function fetchMarkets(): Promise<MarketNode[]> {
                     outcomeProb: yesProb,
                     group: (m.groupItemTitle as string) || (m.category as string) || 'Other',
                     slug: m.slug as string,
+                    eventSlug: (m.eventSlug as string) || (m.event_slug as string) || undefined,
                     image: (m.icon as string) || (m.image as string),
                 };
             })
@@ -67,7 +68,7 @@ function computeHeat(volume24h: number, volumeTotal: number): number {
     return Math.min(Math.max(ratio * 10, 0), 1);
 }
 
-function parseMarketFromEvent(market: Record<string, unknown>, eventId: string): MarketNode | null {
+function parseMarketFromEvent(market: Record<string, unknown>, eventId: string, eventSlug: string): MarketNode | null {
     try {
         const outcomes = JSON.parse((market.outcomes as string) || '[]');
         // Only include binary markets
@@ -96,6 +97,7 @@ function parseMarketFromEvent(market: Record<string, unknown>, eventId: string):
             outcomeProb: yesProb,
             group: '',
             slug: market.slug as string,
+            eventSlug,
             image: (market.image as string) || (market.icon as string),
             liquidity: Number(market.liquidity || 0),
             endTime: market.endDate as string,
@@ -123,7 +125,7 @@ export async function fetchEvents(): Promise<ProcessedEvent[]> {
             .map((event): ProcessedEvent | null => {
                 // Parse embedded markets
                 const markets: MarketNode[] = (event.markets || [])
-                    .map((m) => parseMarketFromEvent(m as unknown as Record<string, unknown>, event.id))
+                    .map((m) => parseMarketFromEvent(m as unknown as Record<string, unknown>, event.id, event.slug))
                     .filter((m): m is MarketNode => m !== null && m.volume > 0);
 
                 if (markets.length === 0) return null;
