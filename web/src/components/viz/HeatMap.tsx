@@ -16,6 +16,14 @@ interface HeatMapNode {
     heat: number; // 0-1 for coloring
     probability?: number; // Only for markets
     slug?: string;
+    // Tooltip & enrichment data
+    volume24h?: number;
+    liquidity?: number;
+    endDate?: string;
+    image?: string;
+    volume24hrRatio?: number; // volume24h / volume — activity proxy
+    eventCount?: number; // category level
+    marketCount?: number; // event level
 }
 
 interface HeatMapProps {
@@ -73,6 +81,8 @@ function transformToNodes(
                 name: cat.name,
                 value: cat.volumeTotal,
                 heat: cat.volumeHeat,
+                volume24h: cat.volume24h,
+                eventCount: cat.eventCount,
             }));
 
         case 'event':
@@ -82,6 +92,11 @@ function transformToNodes(
                 value: event.volumeTotal,
                 heat: event.volumeHeat,
                 slug: event.slug,
+                volume24h: event.volume24h,
+                liquidity: event.liquidity,
+                endDate: event.endDate,
+                image: event.image,
+                marketCount: event.marketCount,
             }));
 
         case 'market':
@@ -92,6 +107,14 @@ function transformToNodes(
                 heat: 0,
                 probability: market.outcomeProb,
                 slug: market.eventSlug || market.slug,
+                volume24h: market.volume24hr,
+                liquidity: market.liquidity,
+                endDate: market.endDate,
+                image: market.image,
+                volume24hrRatio:
+                    market.volume > 0
+                        ? (market.volume24hr || 0) / market.volume
+                        : 0,
             }));
 
         default:
@@ -153,6 +176,10 @@ export default function HeatMap({
     const vpStart = useRef<Viewport>(DEFAULT_VIEWPORT);
     const dragDistance = useRef(0);
     const [isDragging, setIsDragging] = useState(false);
+
+    // Tooltip state
+    const [tooltipNode, setTooltipNode] = useState<HeatMapNode | null>(null);
+    const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
     const applyViewport = useCallback((vp: Viewport) => {
         const clamped = clampViewport(vp);
@@ -224,6 +251,8 @@ export default function HeatMap({
         dragStart.current = { x: e.clientX, y: e.clientY };
         vpStart.current = { ...vp };
         setIsDragging(true);
+        setTooltipNode(null);
+        setTooltipPos(null);
     }, []);
 
     const handleMouseMove = useCallback(
@@ -351,11 +380,10 @@ export default function HeatMap({
     return (
         <div
             ref={containerRef}
-            className={`relative w-full h-full overflow-hidden bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl select-none ${
-                isZoomed
+            className={`relative w-full h-full overflow-hidden bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl select-none ${isZoomed
                     ? isDragging ? 'cursor-grabbing' : 'cursor-grab'
                     : ''
-            }`}
+                }`}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -381,35 +409,32 @@ export default function HeatMap({
                 const color = getNodeColor(node);
                 const showText = screenWidth > 4 && screenHeight > 4;
                 const showStats = screenWidth > 6;
-
-                const Element = isMarketLevel ? 'a' : 'button';
-
-                const elementProps = isMarketLevel
-                    ? {
-                          href: `https://polymarket.com/event/${node.slug}`,
-                          target: '_blank' as const,
-                          rel: 'noopener noreferrer',
-                          onClick: (e: React.MouseEvent) => {
-                              if (dragDistance.current > 3) {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                              }
-                          },
-                      }
-                    : {
-                          onClick: (e: React.MouseEvent) =>
-                              handleClick(e, node, false),
-                      };
+                const showFullProb = screenWidth > 10 && screenHeight > 8;
+                const showImage = screenWidth > 12 && screenHeight > 12 && !!node.image;
 
                 return (
-                    <Element
+                    <div
                         key={node.id}
-                        {...elementProps}
-                        className={`absolute ${
-                            !isZoomed
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e: React.MouseEvent) => {
+                            if (dragDistance.current > 3) return;
+                            handleClick(e, node, isMarketLevel);
+                        }}
+                        onKeyDown={(e: React.KeyboardEvent) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleClick(
+                                    e as unknown as React.MouseEvent,
+                                    node,
+                                    isMarketLevel
+                                );
+                            }
+                        }}
+                        className={`absolute ${!isZoomed
                                 ? 'transition-all duration-500 ease-in-out'
                                 : ''
-                        } hover:z-10 group cursor-pointer text-left`}
+                            } hover:z-10 group cursor-pointer text-left`}
                         style={{
                             left: `${screenLeft}%`,
                             top: `${screenTop}%`,
@@ -417,12 +442,48 @@ export default function HeatMap({
                             height: `${screenHeight}%`,
                             backgroundColor: color,
                         }}
+                        onMouseEnter={(e: React.MouseEvent) => {
+                            if (!isDraggingRef.current) {
+                                setTooltipNode(node);
+                                setTooltipPos({ x: e.clientX, y: e.clientY });
+                            }
+                        }}
+                        onMouseMove={(e: React.MouseEvent) => {
+                            if (!isDraggingRef.current) {
+                                setTooltipPos({ x: e.clientX, y: e.clientY });
+                            }
+                        }}
+                        onMouseLeave={() => {
+                            setTooltipNode(null);
+                            setTooltipPos(null);
+                        }}
                     >
                         {/* Hover overlay */}
-                        <div className="w-full h-full opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 absolute top-0 left-0 border-2 border-white/50" />
+                        <div className="w-full h-full opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 absolute top-0 left-0 border-2 border-white/50 z-[1]" />
+
+                        {/* Background image for large cells */}
+                        {showImage && (
+                            <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                    src={node.image}
+                                    alt=""
+                                    className="w-2/3 h-2/3 object-contain opacity-50 pointer-events-none"
+                                    loading="lazy"
+                                />
+                            </div>
+                        )}
+
+                        {/* Activity badge (market level) */}
+                        {showText && isMarketLevel && node.volume24hrRatio !== undefined && node.volume24hrRatio > 0.08 && (
+                            <span className={`absolute top-1 right-1 z-[2] px-1 py-0.5 text-[7px] font-bold uppercase rounded text-white drop-shadow-md pointer-events-none ${node.volume24hrRatio > 0.15 ? 'bg-red-500/80' : 'bg-yellow-500/80'
+                                }`}>
+                                {node.volume24hrRatio > 0.15 ? 'HOT' : 'ACTIVE'}
+                            </span>
+                        )}
 
                         {/* Content — naturally sized to the cell */}
-                        <div className="relative p-1.5 h-full w-full text-white overflow-hidden pointer-events-none">
+                        <div className="relative z-[2] p-1.5 h-full w-full text-white overflow-hidden pointer-events-none">
                             {showText && (
                                 <div className="flex flex-col h-full">
                                     {/* Title */}
@@ -433,13 +494,19 @@ export default function HeatMap({
                                     {/* Stats at bottom */}
                                     <div className="mt-auto flex items-end justify-between gap-1">
                                         {isMarketLevel &&
-                                        node.probability !== undefined ? (
-                                            <span className="text-[10px] font-mono font-bold opacity-90 drop-shadow-md">
-                                                {Math.round(
-                                                    node.probability * 100
+                                            node.probability !== undefined ? (
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-[10px] font-mono font-bold opacity-90 drop-shadow-md">
+                                                    {Math.round(node.probability * 100)}%
+                                                    <span className="text-[8px] opacity-70 ml-0.5">YES</span>
+                                                </span>
+                                                {showFullProb && (
+                                                    <span className="text-[9px] font-mono opacity-60 drop-shadow-md">
+                                                        {Math.round((1 - node.probability) * 100)}%
+                                                        <span className="text-[7px] opacity-70 ml-0.5">NO</span>
+                                                    </span>
                                                 )}
-                                                %
-                                            </span>
+                                            </div>
                                         ) : (
                                             showStats && (
                                                 <span
@@ -449,8 +516,9 @@ export default function HeatMap({
                                                     {node.heat > 0.7
                                                         ? '\u{1F525}'
                                                         : node.heat > 0.4
-                                                        ? '\u26A1'
-                                                        : ''}
+                                                            ? '\u26A1'
+                                                            : ''}
+                                                    {node.volume24h ? ` $${d3.format('.2s')(node.volume24h)}/24h` : ''}
                                                 </span>
                                             )
                                         )}
@@ -465,7 +533,7 @@ export default function HeatMap({
                                 </div>
                             )}
                         </div>
-                    </Element>
+                    </div>
                 );
             })}
 
@@ -485,6 +553,90 @@ export default function HeatMap({
                     >
                         <RotateCcw className="w-3.5 h-3.5" />
                     </button>
+                </div>
+            )}
+
+            {/* Tooltip */}
+            {tooltipNode && tooltipPos && (
+                <div
+                    className="fixed z-50 pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg shadow-xl p-3 max-w-xs"
+                    style={{
+                        left: tooltipPos.x + 12,
+                        top: tooltipPos.y + 12,
+                    }}
+                >
+                    {/* Image + Title */}
+                    <div className="flex items-start gap-2 mb-2">
+                        {tooltipNode.image && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                                src={tooltipNode.image}
+                                alt=""
+                                className="w-8 h-8 rounded object-cover flex-shrink-0"
+                            />
+                        )}
+                        <h4 className="text-sm font-semibold text-white line-clamp-2">
+                            {tooltipNode.name}
+                        </h4>
+                    </div>
+
+                    {/* Probability (market level) */}
+                    {isMarketLevel && tooltipNode.probability !== undefined && (
+                        <div className="mb-2">
+                            <span className="text-blue-400 font-mono font-bold text-sm">
+                                {Math.round(tooltipNode.probability * 100)}% YES
+                            </span>
+                            <span className="text-red-400 font-mono font-bold text-sm ml-2">
+                                {Math.round((1 - tooltipNode.probability) * 100)}% NO
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Stats */}
+                    <div className="space-y-1 text-xs text-zinc-400">
+                        <div className="flex justify-between gap-4">
+                            <span>Volume</span>
+                            <span className="font-mono text-zinc-200">
+                                ${d3.format('.2s')(tooltipNode.value)}
+                            </span>
+                        </div>
+                        {tooltipNode.volume24h !== undefined && tooltipNode.volume24h > 0 && (
+                            <div className="flex justify-between gap-4">
+                                <span>24h Volume</span>
+                                <span className="font-mono text-zinc-200">
+                                    ${d3.format('.2s')(tooltipNode.volume24h)}
+                                </span>
+                            </div>
+                        )}
+                        {tooltipNode.liquidity !== undefined && tooltipNode.liquidity > 0 && (
+                            <div className="flex justify-between gap-4">
+                                <span>Liquidity</span>
+                                <span className="font-mono text-zinc-200">
+                                    ${d3.format('.2s')(tooltipNode.liquidity)}
+                                </span>
+                            </div>
+                        )}
+                        {tooltipNode.endDate && (
+                            <div className="flex justify-between gap-4">
+                                <span>Ends</span>
+                                <span className="text-zinc-200">
+                                    {new Date(tooltipNode.endDate).toLocaleDateString()}
+                                </span>
+                            </div>
+                        )}
+                        {tooltipNode.eventCount !== undefined && (
+                            <div className="flex justify-between gap-4">
+                                <span>Events</span>
+                                <span className="text-zinc-200">{tooltipNode.eventCount}</span>
+                            </div>
+                        )}
+                        {tooltipNode.marketCount !== undefined && (
+                            <div className="flex justify-between gap-4">
+                                <span>Markets</span>
+                                <span className="text-zinc-200">{tooltipNode.marketCount}</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>
