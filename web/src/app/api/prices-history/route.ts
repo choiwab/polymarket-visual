@@ -25,12 +25,11 @@ export async function GET(request: Request) {
             headers: {
                 'Accept': 'application/json',
             },
+            signal: AbortSignal.timeout(10000), // 10s timeout
         });
 
         if (!res.ok) {
-            // Try to get error details
-            const errorText = await res.text();
-            console.error('Prices history API error:', res.status, errorText);
+            const errorText = await res.text().catch(() => '');
             return NextResponse.json(
                 { error: res.statusText, details: errorText },
                 { status: res.status }
@@ -40,7 +39,10 @@ export async function GET(request: Request) {
         const data = await res.json();
         return NextResponse.json(data);
     } catch (error) {
-        console.error('Prices history fetch error:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        return NextResponse.json(
+            { error: 'Upstream fetch failed', details: message },
+            { status: 502 }
+        );
     }
 }
