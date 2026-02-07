@@ -15,7 +15,7 @@ interface EventPanelProps {
 // Probability Bar Component
 // ============================================
 
-function ProbabilityBar({ market }: { market: MarketNode }) {
+function ProbabilityBar({ market, eventSlug }: { market: MarketNode; eventSlug: string }) {
     const prob = market.outcomeProb;
     const yesPercent = Math.round(prob * 100);
 
@@ -27,7 +27,7 @@ function ProbabilityBar({ market }: { market: MarketNode }) {
 
     return (
         <a
-            href={`https://polymarket.com/event/${market.slug}`}
+            href={`https://polymarket.com/event/${eventSlug}`}
             target="_blank"
             rel="noopener noreferrer"
             className="block p-3 bg-zinc-800/50 rounded-lg hover:bg-zinc-700/50 transition-colors group"
@@ -72,7 +72,7 @@ function ProbabilityBar({ market }: { market: MarketNode }) {
 // Multi-Choice Market Component
 // ============================================
 
-function MultiChoiceMarket({ market }: { market: MarketNode }) {
+function MultiChoiceMarket({ market, eventSlug }: { market: MarketNode; eventSlug: string }) {
     if (!market.outcomes || !market.outcomePrices) return null;
 
     // Sort outcomes by probability
@@ -85,7 +85,7 @@ function MultiChoiceMarket({ market }: { market: MarketNode }) {
 
     return (
         <a
-            href={`https://polymarket.com/event/${market.slug}`}
+            href={`https://polymarket.com/event/${eventSlug}`}
             target="_blank"
             rel="noopener noreferrer"
             className="block p-3 bg-zinc-800/50 rounded-lg hover:bg-zinc-700/50 transition-colors group"
@@ -265,11 +265,13 @@ export default function EventPanel({ event, isOpen, onClose }: EventPanelProps) 
                                     <MultiChoiceMarket
                                         key={market.id}
                                         market={market}
+                                        eventSlug={event.slug}
                                     />
                                 ) : (
                                     <ProbabilityBar
                                         key={market.id}
                                         market={market}
+                                        eventSlug={event.slug}
                                     />
                                 )
                             )}

@@ -395,6 +395,7 @@ function marketToNode(
         categoryId: event?.categoryId || 'other',
         categoryName,
         slug: market.slug,
+        eventSlug: market.eventSlug,
         volatility: history ? computeVolatility(history) : 0,
     };
 }

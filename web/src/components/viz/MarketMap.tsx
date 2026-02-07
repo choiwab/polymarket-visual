@@ -83,7 +83,7 @@ export default function MarketMap({ minVolume = 1000 }: MarketMapProps) {
                 return (
                     <a
                         key={market.id}
-                        href={`https://polymarket.com/event/${market.slug}`}
+                        href={`https://polymarket.com/event/${market.eventSlug || market.slug}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="absolute transition-all duration-700 ease-in-out hover:z-10 group"
