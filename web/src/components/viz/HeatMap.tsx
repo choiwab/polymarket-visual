@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { ViewLevel, Category, ProcessedEvent, MarketNode } from '@/lib/types';
+import { RotateCcw } from 'lucide-react';
 
 // ============================================
 // Types
@@ -22,6 +23,13 @@ interface HeatMapProps {
     data: Category[] | ProcessedEvent[] | MarketNode[];
     onNodeClick?: (node: HeatMapNode) => void;
     minVolume?: number;
+}
+
+interface Viewport {
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
 }
 
 // ============================================
@@ -89,6 +97,14 @@ function transformToNodes(
 }
 
 // ============================================
+// Constants
+// ============================================
+
+const DEFAULT_VIEWPORT: Viewport = { x0: 0, y0: 0, x1: 100, y1: 100 };
+const MIN_VIEWPORT_SIZE = 5; // Minimum viewport dimension (max zoom ~20x)
+const ZOOM_FACTOR = 0.85; // How much viewport shrinks per scroll tick
+
+// ============================================
 // Component
 // ============================================
 
@@ -98,6 +114,32 @@ export default function HeatMap({
     onNodeClick,
     minVolume = 0,
 }: HeatMapProps) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [viewport, setViewport] = useState<Viewport>(DEFAULT_VIEWPORT);
+    const viewportRef = useRef<Viewport>(DEFAULT_VIEWPORT);
+
+    // Drag state
+    const isDraggingRef = useRef(false);
+    const dragStartRef = useRef({ x: 0, y: 0 });
+    const dragStartViewportRef = useRef<Viewport>(DEFAULT_VIEWPORT);
+    const dragDistanceRef = useRef(0);
+    const [isDragging, setIsDragging] = useState(false);
+
+    // Keep ref in sync
+    useEffect(() => {
+        viewportRef.current = viewport;
+    }, [viewport]);
+
+    // Reset viewport when level or data changes
+    useEffect(() => {
+        setViewport(DEFAULT_VIEWPORT);
+        viewportRef.current = DEFAULT_VIEWPORT;
+    }, [level, data]);
+
+    // Computed zoom level
+    const zoomLevel = 100 / (viewport.x1 - viewport.x0);
+    const isZoomed = zoomLevel > 1.05;
+
     // Transform and filter data
     const root = useMemo(() => {
         const nodes = transformToNodes(level, data).filter(
@@ -134,6 +176,140 @@ export default function HeatMap({
         return rootNode as d3.HierarchyRectangularNode<HierarchyData>;
     }, [level, data, minVolume]);
 
+    // Clamp viewport to stay within bounds
+    const clampViewport = useCallback((vp: Viewport): Viewport => {
+        const w = vp.x1 - vp.x0;
+        const h = vp.y1 - vp.y0;
+        let x0 = vp.x0;
+        let y0 = vp.y0;
+
+        // Clamp position so viewport stays within 0-100
+        x0 = Math.max(0, Math.min(100 - w, x0));
+        y0 = Math.max(0, Math.min(100 - h, y0));
+
+        return { x0, y0, x1: x0 + w, y1: y0 + h };
+    }, []);
+
+    // Wheel handler for zoom
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const handleWheel = (e: WheelEvent) => {
+            e.preventDefault();
+
+            const rect = container.getBoundingClientRect();
+            // Cursor position as fraction of container (0-1)
+            const cursorXFrac = (e.clientX - rect.left) / rect.width;
+            const cursorYFrac = (e.clientY - rect.top) / rect.height;
+
+            const vp = viewportRef.current;
+            const vpW = vp.x1 - vp.x0;
+            const vpH = vp.y1 - vp.y0;
+
+            // Point in treemap coordinates under cursor
+            const cursorTreeX = vp.x0 + cursorXFrac * vpW;
+            const cursorTreeY = vp.y0 + cursorYFrac * vpH;
+
+            // Zoom direction
+            const zoomIn = e.deltaY < 0;
+            const factor = zoomIn ? ZOOM_FACTOR : 1 / ZOOM_FACTOR;
+
+            let newW = vpW * factor;
+            let newH = vpH * factor;
+
+            // Clamp to min/max size
+            if (newW < MIN_VIEWPORT_SIZE) {
+                newW = MIN_VIEWPORT_SIZE;
+                newH = MIN_VIEWPORT_SIZE * (vpH / vpW);
+            }
+            if (newW > 100) {
+                newW = 100;
+                newH = 100;
+            }
+
+            // Keep cursor point fixed in screen space
+            const newX0 = cursorTreeX - cursorXFrac * newW;
+            const newY0 = cursorTreeY - cursorYFrac * newH;
+
+            const newVp = clampViewport({
+                x0: newX0,
+                y0: newY0,
+                x1: newX0 + newW,
+                y1: newY0 + newH,
+            });
+
+            viewportRef.current = newVp;
+            setViewport(newVp);
+        };
+
+        container.addEventListener('wheel', handleWheel, { passive: false });
+        return () => container.removeEventListener('wheel', handleWheel);
+    }, [clampViewport]);
+
+    // Drag handlers for panning
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        if (!isZoomed) return;
+        // Only initiate drag on primary button
+        if (e.button !== 0) return;
+
+        isDraggingRef.current = true;
+        dragDistanceRef.current = 0;
+        dragStartRef.current = { x: e.clientX, y: e.clientY };
+        dragStartViewportRef.current = { ...viewportRef.current };
+        setIsDragging(true);
+        e.preventDefault();
+    }, [isZoomed]);
+
+    const handleMouseMove = useCallback((e: React.MouseEvent) => {
+        if (!isDraggingRef.current || !containerRef.current) return;
+
+        const dx = e.clientX - dragStartRef.current.x;
+        const dy = e.clientY - dragStartRef.current.y;
+        dragDistanceRef.current = Math.sqrt(dx * dx + dy * dy);
+
+        const rect = containerRef.current.getBoundingClientRect();
+        const svp = dragStartViewportRef.current;
+        const vpW = svp.x1 - svp.x0;
+        const vpH = svp.y1 - svp.y0;
+
+        // Convert pixel drag to treemap coordinate delta
+        const treeDx = -(dx / rect.width) * vpW;
+        const treeDy = -(dy / rect.height) * vpH;
+
+        const newVp = clampViewport({
+            x0: svp.x0 + treeDx,
+            y0: svp.y0 + treeDy,
+            x1: svp.x0 + treeDx + vpW,
+            y1: svp.y0 + treeDy + vpH,
+        });
+
+        viewportRef.current = newVp;
+        setViewport(newVp);
+    }, [clampViewport]);
+
+    const handleMouseUp = useCallback(() => {
+        isDraggingRef.current = false;
+        setIsDragging(false);
+    }, []);
+
+    // Global mouseup to catch drag release outside container
+    useEffect(() => {
+        const handleGlobalMouseUp = () => {
+            if (isDraggingRef.current) {
+                isDraggingRef.current = false;
+                setIsDragging(false);
+            }
+        };
+        window.addEventListener('mouseup', handleGlobalMouseUp);
+        return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+    }, []);
+
+    const resetZoom = useCallback(() => {
+        setViewport(DEFAULT_VIEWPORT);
+        viewportRef.current = DEFAULT_VIEWPORT;
+    }, []);
+
     // Get color for a node based on level
     const getNodeColor = (node: HeatMapNode): string => {
         if (level === 'market' && node.probability !== undefined) {
@@ -142,12 +318,18 @@ export default function HeatMap({
         return heatColorScale(node.heat);
     };
 
-    // Handle node click
+    // Handle node click (only if not dragging)
     const handleClick = (
         e: React.MouseEvent,
         node: HeatMapNode,
         isMarketLevel: boolean
     ) => {
+        // Suppress click if user was dragging
+        if (dragDistanceRef.current > 3) {
+            e.preventDefault();
+            return;
+        }
+
         if (isMarketLevel && node.slug) {
             // Markets open Polymarket directly
             window.open(`https://polymarket.com/event/${node.slug}`, '_blank');
@@ -169,16 +351,44 @@ export default function HeatMap({
     }
 
     const isMarketLevel = level === 'market';
+    const vpW = viewport.x1 - viewport.x0;
+    const vpH = viewport.y1 - viewport.y0;
 
     return (
-        <div className="relative w-full h-full overflow-hidden bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl">
+        <div
+            ref={containerRef}
+            className={`relative w-full h-full overflow-hidden bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl ${
+                isZoomed
+                    ? isDragging ? 'cursor-grabbing' : 'cursor-grab'
+                    : ''
+            }`}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+        >
             {root.leaves().map((leaf) => {
                 const node = leaf.data as HeatMapNode;
-                const width = leaf.x1 - leaf.x0;
-                const height = leaf.y1 - leaf.y0;
+                const cellW = leaf.x1 - leaf.x0;
+                const cellH = leaf.y1 - leaf.y0;
 
-                // Skip tiny boxes
-                if (width < 2 || height < 2) return null;
+                // Map cell from treemap coords to viewport-relative screen coords
+                const screenLeft = ((leaf.x0 - viewport.x0) / vpW) * 100;
+                const screenTop = ((leaf.y0 - viewport.y0) / vpH) * 100;
+                const screenW = (cellW / vpW) * 100;
+                const screenH = (cellH / vpH) * 100;
+
+                // Skip cells fully outside viewport
+                if (
+                    leaf.x1 <= viewport.x0 ||
+                    leaf.x0 >= viewport.x1 ||
+                    leaf.y1 <= viewport.y0 ||
+                    leaf.y0 >= viewport.y1
+                ) {
+                    return null;
+                }
+
+                // Skip cells too small on screen (< 1% of viewport)
+                if (screenW < 1 || screenH < 1) return null;
 
                 const color = getNodeColor(node);
                 const Element = isMarketLevel ? 'a' : 'button';
@@ -188,22 +398,33 @@ export default function HeatMap({
                           href: `https://polymarket.com/event/${node.slug}`,
                           target: '_blank',
                           rel: 'noopener noreferrer',
+                          onClick: (e: React.MouseEvent) => {
+                              if (dragDistanceRef.current > 3) {
+                                  e.preventDefault();
+                              }
+                          },
                       }
                     : {
                           onClick: (e: React.MouseEvent) =>
                               handleClick(e, node, false),
                       };
 
+                // Show text when cell is large enough on screen
+                const showText = screenW > 5 && screenH > 5;
+                const showStats = screenW > 8;
+
                 return (
                     <Element
                         key={node.id}
                         {...elementProps}
-                        className="absolute transition-all duration-500 ease-in-out hover:z-10 group cursor-pointer text-left"
+                        className={`absolute hover:z-10 group cursor-pointer text-left ${
+                            isZoomed ? '' : 'transition-all duration-500 ease-in-out'
+                        }`}
                         style={{
-                            left: `${leaf.x0}%`,
-                            top: `${leaf.y0}%`,
-                            width: `${width}%`,
-                            height: `${height}%`,
+                            left: `${screenLeft}%`,
+                            top: `${screenTop}%`,
+                            width: `${screenW}%`,
+                            height: `${screenH}%`,
                             backgroundColor: color,
                         }}
                     >
@@ -212,7 +433,7 @@ export default function HeatMap({
 
                         {/* Content */}
                         <div className="relative p-1.5 h-full w-full text-white overflow-hidden pointer-events-none">
-                            {width > 5 && height > 5 && (
+                            {showText && (
                                 <div className="flex flex-col h-full">
                                     {/* Title */}
                                     <span className="font-bold text-[10px] md:text-xs leading-tight line-clamp-3 drop-shadow-md">
@@ -231,7 +452,7 @@ export default function HeatMap({
                                                 %
                                             </span>
                                         ) : (
-                                            width > 8 && (
+                                            showStats && (
                                                 <span
                                                     className="text-[9px] opacity-70"
                                                     title="Activity level"
@@ -246,7 +467,7 @@ export default function HeatMap({
                                         )}
 
                                         {/* Volume */}
-                                        {width > 8 && (
+                                        {showStats && (
                                             <span className="text-[9px] opacity-70 font-mono">
                                                 ${d3.format('.2s')(node.value)}
                                             </span>
@@ -258,6 +479,25 @@ export default function HeatMap({
                     </Element>
                 );
             })}
+
+            {/* Zoom indicator */}
+            {isZoomed && (
+                <div className="absolute bottom-3 right-3 z-20 bg-zinc-900/90 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-400 flex items-center gap-2 pointer-events-auto">
+                    <span className="text-white font-mono">
+                        {zoomLevel.toFixed(1)}x
+                    </span>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            resetZoom();
+                        }}
+                        className="text-zinc-500 hover:text-white transition-colors"
+                        title="Reset zoom"
+                    >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
