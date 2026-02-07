@@ -200,7 +200,8 @@ export async function fetchPriceHistory(
         );
 
         if (!response.ok) {
-            console.error(`Failed to fetch price history for ${tokenId}:`, response.statusText);
+            // Expected for some tokens — don't use console.error
+            console.warn(`Price history unavailable for token ${tokenId.slice(0, 12)}… (${response.status})`);
             return [];
         }
 
@@ -214,10 +215,12 @@ export async function fetchPriceHistory(
             price: typeof point.p === 'number' ? point.p : parseFloat(String(point.p)) || 0,
         }));
     } catch (error) {
-        console.error('Error fetching price history:', error);
+        console.warn('Price history fetch failed:', (error as Error).message);
         return [];
     }
 }
+
+const BATCH_SIZE = 5;
 
 export async function fetchMultiplePriceHistories(
     tokenIds: string[],
@@ -225,17 +228,21 @@ export async function fetchMultiplePriceHistories(
 ): Promise<Map<string, PriceHistoryPoint[]>> {
     const results = new Map<string, PriceHistoryPoint[]>();
 
-    // Batch requests with Promise.allSettled for fault tolerance
-    const promises = tokenIds.map(async (tokenId) => {
-        const history = await fetchPriceHistory(tokenId, interval);
-        return { tokenId, history };
-    });
+    // Process in batches to avoid overwhelming the API
+    for (let i = 0; i < tokenIds.length; i += BATCH_SIZE) {
+        const batch = tokenIds.slice(i, i + BATCH_SIZE);
 
-    const settled = await Promise.allSettled(promises);
+        const settled = await Promise.allSettled(
+            batch.map(async (tokenId) => {
+                const history = await fetchPriceHistory(tokenId, interval);
+                return { tokenId, history };
+            })
+        );
 
-    for (const result of settled) {
-        if (result.status === 'fulfilled') {
-            results.set(result.value.tokenId, result.value.history);
+        for (const result of settled) {
+            if (result.status === 'fulfilled') {
+                results.set(result.value.tokenId, result.value.history);
+            }
         }
     }
 
