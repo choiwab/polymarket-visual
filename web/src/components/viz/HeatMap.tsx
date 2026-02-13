@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
+import React, { useMemo, useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import * as d3 from 'd3';
 import { ViewLevel, Category, ProcessedEvent, MarketNode } from '@/lib/types';
 import { RotateCcw } from 'lucide-react';
@@ -180,6 +180,8 @@ export default function HeatMap({
     // Tooltip state
     const [tooltipNode, setTooltipNode] = useState<HeatMapNode | null>(null);
     const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+    const [tooltipStyle, setTooltipStyle] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
+    const tooltipRef = useRef<HTMLDivElement>(null);
 
     const applyViewport = useCallback((vp: Viewport) => {
         const clamped = clampViewport(vp);
@@ -285,6 +287,21 @@ export default function HeatMap({
         isDraggingRef.current = false;
         setIsDragging(false);
     }, []);
+
+    // Reposition tooltip to stay within viewport
+    useLayoutEffect(() => {
+        if (!tooltipRef.current || !tooltipPos) return;
+        const rect = tooltipRef.current.getBoundingClientRect();
+        let left = tooltipPos.x + 12;
+        let top = tooltipPos.y + 12;
+        if (left + rect.width > window.innerWidth) {
+            left = tooltipPos.x - 12 - rect.width;
+        }
+        if (top + rect.height > window.innerHeight) {
+            top = tooltipPos.y - 12 - rect.height;
+        }
+        setTooltipStyle({ left, top });
+    }, [tooltipPos]);
 
     // Global mouseup to catch drag release outside container
     useEffect(() => {
