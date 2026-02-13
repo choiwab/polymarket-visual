@@ -12,6 +12,7 @@ export interface LocationGroup {
     maxHeat: number;
     avgConfidence: number;
     countryName?: string;
+    cityName?: string;
 }
 
 export interface GroupedMarkerData {
@@ -81,6 +82,7 @@ export function groupEventsByLocation(
                         0
                     ) / locationEvents.length,
                 countryName: locationEvents[0].geoLocation.countryName,
+                cityName: locationEvents[0].geoLocation.cityName,
             });
         } else {
             // Single event at this location

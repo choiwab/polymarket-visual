@@ -20,6 +20,7 @@ import {
 
 interface WorldMapProps {
     events: GeoEnrichedEvent[];
+    minVolume?: number;
     onEventClick: (eventId: string) => void;
     onClusterClick: (events: GeoEnrichedEvent[]) => void;
     onEventHover?: (event: GeoEnrichedEvent | null) => void;
@@ -99,7 +100,7 @@ function Tooltip({ data, position }: TooltipProps) {
                 }}
             >
                 <h4 className="text-sm font-semibold text-white mb-2">
-                    {cluster.count} Events in {cluster.countryName || 'this location'}
+                    {cluster.count} Events in {cluster.cityName || cluster.countryName || 'this location'}
                 </h4>
                 <ul className="space-y-1 text-xs text-zinc-300 max-h-32 overflow-y-auto">
                     {cluster.events.slice(0, 5).map((e) => (
@@ -170,6 +171,7 @@ function Tooltip({ data, position }: TooltipProps) {
 
 export default function WorldMap({
     events,
+    minVolume = 0,
     onEventClick,
     onClusterClick,
     onEventHover,
@@ -276,9 +278,10 @@ export default function WorldMap({
 
     // Group events into clusters and singles
     const { clusterMarkers, singleMarkers } = useMemo(() => {
-        if (!events.length) return { clusterMarkers: [], singleMarkers: [] };
+        const filtered = events.filter((e) => e.volumeTotal >= minVolume);
+        if (!filtered.length) return { clusterMarkers: [], singleMarkers: [] };
 
-        const { groups, singleEvents } = groupEventsByLocation(events);
+        const { groups, singleEvents } = groupEventsByLocation(filtered);
 
         // Calculate size scale based on ALL volumes
         const allVolumes = [
@@ -299,6 +302,7 @@ export default function WorldMap({
             opacity: 0.4 + group.avgConfidence * 0.6,
             count: group.events.length,
             countryName: group.countryName,
+            cityName: group.cityName,
         }));
 
         // Create single event markers
@@ -316,7 +320,7 @@ export default function WorldMap({
         }));
 
         return { clusterMarkers, singleMarkers };
-    }, [events]);
+    }, [events, minVolume]);
 
     // Clear expanded markers
     const clearExpandedMarkers = useCallback(() => {

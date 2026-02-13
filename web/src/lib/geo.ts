@@ -91,6 +91,87 @@ export const COUNTRY_CENTROIDS: Record<string, CountryData> = {
 };
 
 // ============================================
+// City Coordinates (for sub-country spreading)
+// ============================================
+
+const CITY_COORDINATES: Record<string, { lat: number; lng: number; country: string }> = {
+    // US
+    'new york': { lat: 40.7128, lng: -74.006, country: 'US' },
+    'california': { lat: 36.7783, lng: -119.4179, country: 'US' },
+    'texas': { lat: 31.9686, lng: -99.9018, country: 'US' },
+    'florida': { lat: 27.6648, lng: -81.5158, country: 'US' },
+    'washington': { lat: 38.8951, lng: -77.0364, country: 'US' },
+    'chicago': { lat: 41.8781, lng: -87.6298, country: 'US' },
+    'los angeles': { lat: 34.0522, lng: -118.2437, country: 'US' },
+    'san francisco': { lat: 37.7749, lng: -122.4194, country: 'US' },
+    'silicon valley': { lat: 37.3875, lng: -122.0575, country: 'US' },
+    // GB
+    'london': { lat: 51.5074, lng: -0.1278, country: 'GB' },
+    'scotland': { lat: 56.4907, lng: -4.2026, country: 'GB' },
+    'manchester': { lat: 53.4808, lng: -2.2426, country: 'GB' },
+    // DE
+    'berlin': { lat: 52.52, lng: 13.405, country: 'DE' },
+    'munich': { lat: 48.1351, lng: 11.582, country: 'DE' },
+    // FR
+    'paris': { lat: 48.8566, lng: 2.3522, country: 'FR' },
+    // RU
+    'moscow': { lat: 55.7558, lng: 37.6173, country: 'RU' },
+    // CN
+    'beijing': { lat: 39.9042, lng: 116.4074, country: 'CN' },
+    'shanghai': { lat: 31.2304, lng: 121.4737, country: 'CN' },
+    'hong kong': { lat: 22.3193, lng: 114.1694, country: 'CN' },
+    // JP
+    'tokyo': { lat: 35.6762, lng: 139.6503, country: 'JP' },
+    // KR
+    'seoul': { lat: 37.5665, lng: 126.978, country: 'KR' },
+    // IN
+    'delhi': { lat: 28.6139, lng: 77.209, country: 'IN' },
+    'mumbai': { lat: 19.076, lng: 72.8777, country: 'IN' },
+    // IL
+    'jerusalem': { lat: 31.7683, lng: 35.2137, country: 'IL' },
+    'tel aviv': { lat: 32.0853, lng: 34.7818, country: 'IL' },
+    // PS
+    'gaza': { lat: 31.3547, lng: 34.3088, country: 'PS' },
+    'ramallah': { lat: 31.9038, lng: 35.2034, country: 'PS' },
+    // TR
+    'ankara': { lat: 39.9334, lng: 32.8597, country: 'TR' },
+    'istanbul': { lat: 41.0082, lng: 28.9784, country: 'TR' },
+    // AU
+    'sydney': { lat: -33.8688, lng: 151.2093, country: 'AU' },
+    'melbourne': { lat: -37.8136, lng: 144.9631, country: 'AU' },
+    // BR
+    'sao paulo': { lat: -23.5505, lng: -46.6333, country: 'BR' },
+    // UA
+    'kyiv': { lat: 50.4501, lng: 30.5234, country: 'UA' },
+    'kiev': { lat: 50.4501, lng: 30.5234, country: 'UA' },
+    'crimea': { lat: 44.9521, lng: 34.1024, country: 'UA' },
+    'donbas': { lat: 48.0159, lng: 37.8028, country: 'UA' },
+    // CH
+    'zurich': { lat: 47.3769, lng: 8.5417, country: 'CH' },
+    'geneva': { lat: 46.2044, lng: 6.1432, country: 'CH' },
+    'davos': { lat: 46.8003, lng: 9.8361, country: 'CH' },
+    // IT
+    'rome': { lat: 41.9028, lng: 12.4964, country: 'IT' },
+    'milan': { lat: 45.4642, lng: 9.19, country: 'IT' },
+    // ES
+    'madrid': { lat: 40.4168, lng: -3.7038, country: 'ES' },
+    'barcelona': { lat: 41.3874, lng: 2.1686, country: 'ES' },
+};
+
+function matchCity(text: string, countryCode?: string): { lat: number; lng: number; country: string; name: string } | null {
+    for (const [cityName, coords] of Object.entries(CITY_COORDINATES)) {
+        if (countryCode && coords.country !== countryCode) continue;
+        const regex = new RegExp(`\\b${cityName}\\b`, 'i');
+        if (regex.test(text)) {
+            // Capitalize city name for display
+            const name = cityName.replace(/\b\w/g, (c) => c.toUpperCase());
+            return { ...coords, name };
+        }
+    }
+    return null;
+}
+
+// ============================================
 // Institution to Country Mapping (Tier 1)
 // ============================================
 
@@ -391,12 +472,15 @@ export function inferEventLocation(event: ProcessedEvent): GeoInferenceResult {
         if (regex.test(text)) {
             const country = COUNTRY_CENTROIDS[countryCode];
             if (country) {
+                const city = matchCity(text, countryCode);
+                const coords = city || { lat: country.lat, lng: country.lng };
                 return {
                     geoLocation: {
                         type: 'point',
-                        coordinates: { lat: country.lat, lng: country.lng },
+                        coordinates: coords,
                         country: countryCode,
                         countryName: country.name,
+                        cityName: city?.name,
                         confidence: 0.9,
                         source: regex.test(title)
                             ? 'title'
@@ -429,12 +513,15 @@ export function inferEventLocation(event: ProcessedEvent): GeoInferenceResult {
         const country = COUNTRY_CENTROIDS[bestMatch.code];
         if (country) {
             const confidence = Math.min(0.5 + bestMatch.score * 0.1, 0.85);
+            const city = matchCity(text, bestMatch.code);
+            const coords = city || { lat: country.lat, lng: country.lng };
             return {
                 geoLocation: {
                     type: 'point',
-                    coordinates: { lat: country.lat, lng: country.lng },
+                    coordinates: coords,
                     country: bestMatch.code,
                     countryName: country.name,
+                    cityName: city?.name,
                     confidence,
                     source: 'title',
                 },
