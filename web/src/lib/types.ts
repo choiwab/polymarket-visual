@@ -142,6 +142,7 @@ export interface GeoLocation {
     coordinates: GeoCoordinates;
     country?: string; // ISO alpha-2 (e.g., 'US', 'GB')
     countryName?: string; // Full name (e.g., 'United States')
+    cityName?: string; // City name if resolved (e.g., 'New York')
     confidence: number; // 0-1
     source: 'title' | 'description' | 'institution' | 'default';
 }
@@ -258,4 +259,5 @@ export interface ClusterMarker {
     opacity: number; // Based on avg confidence
     count: number; // Number of events
     countryName?: string;
+    cityName?: string;
 }

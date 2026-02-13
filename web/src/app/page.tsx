@@ -220,6 +220,25 @@ export default function Home() {
                                 </span>{' '}
                                 mappable events
                             </span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-zinc-500 text-xs">
+                                    Min Vol:
+                                </span>
+                                <input
+                                    type="range"
+                                    min="10000"
+                                    max="10000000"
+                                    step="100000"
+                                    value={minVolume}
+                                    onChange={(e) =>
+                                        setMinVolume(Number(e.target.value))
+                                    }
+                                    className="w-32 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-blue-600 hover:accent-blue-500"
+                                />
+                                <span className="font-mono text-zinc-300 w-16 text-right">
+                                    ${(minVolume / 1000000).toFixed(1)}M
+                                </span>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -281,6 +300,7 @@ export default function Home() {
                 ) : activeTab === 'worldmap' ? (
                     <WorldMap
                         events={mappableEvents}
+                        minVolume={minVolume}
                         onEventClick={handleWorldMapEventClick}
                         onClusterClick={handleClusterClick}
                     />

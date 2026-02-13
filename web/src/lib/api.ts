@@ -5,19 +5,27 @@ const BASE_URL = '/api';
 
 export async function fetchMarkets(): Promise<MarketNode[]> {
     try {
-        // Fetch active markets with significant volume, sorted by volume descending
-        const response = await fetch(
-            `${BASE_URL}/markets?active=true&closed=false&order=-volume&limit=500&volume_min=5000`
-        );
+        const PAGE_SIZE = 100;
+        let offset = 0;
+        const allRawMarkets: Record<string, unknown>[] = [];
 
-        if (!response.ok) {
-            throw new Error(`Failed to fetch markets: ${response.statusText}`);
+        while (true) {
+            const response = await fetch(
+                `${BASE_URL}/markets?active=true&closed=false&order=-volume&limit=${PAGE_SIZE}&offset=${offset}&volume_min=5000`
+            );
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch markets: ${response.statusText}`);
+            }
+
+            const page = await response.json();
+            allRawMarkets.push(...page);
+
+            if (page.length < PAGE_SIZE) break;
+            offset += PAGE_SIZE;
         }
 
-        const data = await response.json();
-
-        // The API returns a flat list of markets
-        return data
+        return allRawMarkets
             .filter((m: Record<string, unknown>) => {
                 // basic filtering for binary markets (Yes/No) which are easiest to visualize clearly
                 try {
@@ -111,17 +119,27 @@ function parseMarketFromEvent(market: Record<string, unknown>, eventId: string, 
 
 export async function fetchEvents(): Promise<ProcessedEvent[]> {
     try {
-        const response = await fetch(
-            `${BASE_URL}/events?active=true&closed=false&order=-volume&limit=200&volume_min=10000`
-        );
+        const PAGE_SIZE = 100;
+        let offset = 0;
+        const allRawEvents: RawPolymarketEvent[] = [];
 
-        if (!response.ok) {
-            throw new Error(`Failed to fetch events: ${response.statusText}`);
+        while (true) {
+            const response = await fetch(
+                `${BASE_URL}/events?active=true&closed=false&order=-volume&limit=${PAGE_SIZE}&offset=${offset}&volume_min=10000`
+            );
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch events: ${response.statusText}`);
+            }
+
+            const page: RawPolymarketEvent[] = await response.json();
+            allRawEvents.push(...page);
+
+            if (page.length < PAGE_SIZE) break;
+            offset += PAGE_SIZE;
         }
 
-        const data: RawPolymarketEvent[] = await response.json();
-
-        return data
+        return allRawEvents
             .map((event): ProcessedEvent | null => {
                 // Parse embedded markets
                 const markets: MarketNode[] = (event.markets || [])
