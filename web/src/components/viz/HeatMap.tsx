@@ -576,10 +576,11 @@ export default function HeatMap({
             {/* Tooltip */}
             {tooltipNode && tooltipPos && (
                 <div
+                    ref={tooltipRef}
                     className="fixed z-50 pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg shadow-xl p-3 max-w-xs"
                     style={{
-                        left: tooltipPos.x + 12,
-                        top: tooltipPos.y + 12,
+                        left: tooltipStyle.left,
+                        top: tooltipStyle.top,
                     }}
                 >
                     {/* Image + Title */}
