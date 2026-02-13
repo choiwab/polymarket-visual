@@ -91,7 +91,7 @@ function Tooltip({ data, position }: TooltipProps) {
         const cluster = data.cluster;
         return (
             <div
-                className="fixed z-[100] pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg shadow-xl p-3 max-w-xs"
+                className="fixed z-[300] pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg shadow-xl p-3 max-w-xs"
                 style={{
                     left: position.x + 15,
                     top: position.y - 10,
@@ -126,7 +126,7 @@ function Tooltip({ data, position }: TooltipProps) {
         const event = data.event;
         return (
             <div
-                className="fixed z-[100] pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg shadow-xl p-3 max-w-xs"
+                className="fixed z-[300] pointer-events-none bg-zinc-900/95 border border-zinc-700 rounded-lg shadow-xl p-3 max-w-xs"
                 style={{
                     left: position.x + 15,
                     top: position.y - 10,
